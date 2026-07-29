@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MIT -->
+<component type="desktop-application">
+  <id>dev.quinnjr.claude-crab</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>Claude Crab</name>
+  <summary>Watch Claude Code work from the corner of your eye</summary>
+
+  <description>
+    <p>
+      Claude Crab puts a small pixel character in a strip just above your panel
+      and animates it to match what Claude Code is doing, so you can tell at a
+      glance without switching windows.
+    </p>
+    <p>
+      At rest it sleeps in a corner. When a session starts working it walks, and
+      the gait changes with the tool in use. When Claude is waiting on you it
+      stops, turns to face you, and waves — the one state where you are the
+      thing holding work up.
+    </p>
+    <p>
+      It reads Claude Code hook events and nothing else. It never inspects your
+      prompts, code, or transcripts, and it makes no network connections.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Click-through overlay that never steals focus or covers your panel</li>
+      <li>A single character reflecting every running session at once</li>
+      <li>Distinct animations for waiting on input, finishing, and failing</li>
+      <li>An optional variant with a top hat and monocle</li>
+      <li>Runs as a systemd user service</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">dev.quinnjr.claude-crab.desktop</launchable>
+
+  <url type="homepage">https://github.com/quinnjr/claude-crab</url>
+  <url type="bugtracker">https://github.com/quinnjr/claude-crab/issues</url>
+  <url type="vcs-browser">https://github.com/quinnjr/claude-crab</url>
+
+  <developer id="dev.quinnjr">
+    <name>Joseph R. Quinn</name>
+  </developer>
+
+  <categories>
+    <category>Utility</category>
+  </categories>
+
+  <keywords>
+    <keyword>claude</keyword>
+    <keyword>panel</keyword>
+    <keyword>status</keyword>
+    <keyword>pet</keyword>
+  </keywords>
+
+  <!-- No <control> relation: the overlay is click-through and never receives
+       input of any kind, so requiring a pointing device would be wrong. -->
+  <recommends>
+    <display_length compare="ge">768</display_length>
+  </recommends>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="1.0.0" date="2026-07-28">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

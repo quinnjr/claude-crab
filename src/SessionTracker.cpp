@@ -5,12 +5,15 @@
 #include "SessionTracker.h"
 
 #include <QDateTime>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLoggingCategory>
+#include <QRegularExpression>
 #include <QTimer>
 
 Q_LOGGING_CATEGORY(CRAB, "claude.crab")
@@ -49,10 +52,15 @@ void SessionTracker::start()
     m_sweepTimer = new QTimer(this);
     m_sweepTimer->setInterval(SweepIntervalMs);
     connect(m_sweepTimer, &QTimer::timeout, this, [this] {
-        sweepStale(QDateTime::currentMSecsSinceEpoch());
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        sweepStale(now);
+        pruneInbox(now);
     });
     m_sweepTimer->start();
 
+    // Prune before the first drain: after a spell with the crab not running
+    // there may be a large backlog, all of it too old to mean anything.
+    pruneInbox(QDateTime::currentMSecsSinceEpoch());
     poll();
 }
 
@@ -91,12 +99,113 @@ void SessionTracker::poll()
 
         QJsonParseError error;
         const QJsonDocument doc = QJsonDocument::fromJson(raw, &error);
-        if (error.error != QJsonParseError::NoError || !doc.isObject()) {
-            // A malformed payload is never fatal; the crab keeps walking.
-            qCWarning(CRAB) << "discarding malformed event" << names.at(i) << error.errorString();
+        if (error.error == QJsonParseError::NoError && doc.isObject()) {
+            handleEvent(doc.object(), now);
             continue;
         }
-        handleEvent(doc.object(), now);
+
+        // Most likely the hook capped an oversized payload mid-string. The
+        // fields the crab needs all precede tool_input, so they survive.
+        const QJsonObject salvaged = salvage(raw);
+        if (!salvaged.isEmpty()) {
+            handleEvent(salvaged, now);
+            continue;
+        }
+
+        // A malformed payload is never fatal; the crab keeps walking.
+        qCWarning(CRAB) << "discarding unparseable event" << names.at(i) << error.errorString();
+    }
+}
+
+QJsonObject SessionTracker::salvage(const QByteArray &raw)
+{
+    // First match wins on purpose: these keys appear near the head of the
+    // payload, so an occurrence of the same text inside a later tool_input
+    // cannot shadow the real one.
+    const QString text = QString::fromUtf8(raw);
+    const auto field = [&text](const char *key) -> QString {
+        // Custom delimiter: the pattern itself ends in )" which would close a
+        // plain raw string early.
+        const QRegularExpression re(
+            QStringLiteral(R"RX("%1"\s*:\s*"([^"]*)")RX").arg(QLatin1String(key)));
+        const QRegularExpressionMatch match = re.match(text);
+        return match.hasMatch() ? match.captured(1) : QString();
+    };
+
+    const QString id = field("session_id");
+    const QString event = field("hook_event_name");
+    if (id.isEmpty() || event.isEmpty()) {
+        return {};
+    }
+
+    QJsonObject obj{
+        {QStringLiteral("session_id"), id},
+        {QStringLiteral("hook_event_name"), event},
+    };
+    const QString tool = field("tool_name");
+    if (!tool.isEmpty()) {
+        obj.insert(QStringLiteral("tool_name"), tool);
+    }
+    // tool_response sits after tool_input and so is the field most likely to
+    // have been cut; a truncated payload simply loses the error blip.
+    return obj;
+}
+
+void SessionTracker::setInboxBudget(qint64 maxBytes, qint64 maxAgeMs)
+{
+    m_inboxMaxBytes = maxBytes;
+    m_inboxMaxAgeMs = maxAgeMs;
+}
+
+void SessionTracker::pruneInbox(qint64 nowMs)
+{
+    QDir dir(m_inboxDir);
+    if (!dir.exists()) {
+        return;
+    }
+
+    // Include .tmp files: a hook killed mid-write leaves one behind forever.
+    const QFileInfoList entries =
+        dir.entryInfoList({QStringLiteral("*.json"), QStringLiteral("*.tmp")}, QDir::Files,
+                          QDir::Name);
+    if (entries.isEmpty()) {
+        return;
+    }
+
+    int removedAged = 0;
+    qint64 total = 0;
+    QFileInfoList kept;
+    kept.reserve(entries.size());
+
+    for (const QFileInfo &info : entries) {
+        const qint64 age = nowMs - info.lastModified().toMSecsSinceEpoch();
+        if (age > m_inboxMaxAgeMs) {
+            if (QFile::remove(info.absoluteFilePath())) {
+                ++removedAged;
+            }
+            continue;
+        }
+        total += info.size();
+        kept.append(info);
+    }
+
+    // Oldest first, until the directory is back inside its byte budget.
+    int removedForSize = 0;
+    for (const QFileInfo &info : std::as_const(kept)) {
+        if (total <= m_inboxMaxBytes) {
+            break;
+        }
+        if (QFile::remove(info.absoluteFilePath())) {
+            total -= info.size();
+            ++removedForSize;
+        }
+    }
+
+    // Never drop events silently: a gap in the crab's behaviour should always
+    // have a line explaining it.
+    if (removedAged || removedForSize) {
+        qCWarning(CRAB) << "pruned inbox:" << removedAged << "stale," << removedForSize
+                        << "over budget;" << total << "bytes remain";
     }
 }
 

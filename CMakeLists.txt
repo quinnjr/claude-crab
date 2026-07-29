@@ -46,9 +46,13 @@ add_library(crabcore STATIC
     src/SessionTracker.h
     src/CrabConfig.cpp
     src/CrabConfig.h
+    src/CrabController.cpp
+    src/CrabController.h
 )
 target_include_directories(crabcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(crabcore PUBLIC Qt6::Core)
+# Quick is here only for QQuickWindow::setMask in CrabController; everything
+# else in this library is Core-only and headless-testable.
+target_link_libraries(crabcore PUBLIC Qt6::Core Qt6::Quick)
 
 # --- application ------------------------------------------------------------
 
@@ -69,6 +73,7 @@ qt_add_qml_module(claude-crab
         qml/Main.qml
         qml/Crab.qml
         qml/CrabBrain.qml
+        qml/CrabMenu.qml
     RESOURCES
         ${SPRITE_SHEET}
         ${SPRITE_SHEET_FANCY}
@@ -96,6 +101,10 @@ if(BUILD_TESTING)
     qt_add_executable(tst_crabconfig tests/tst_crabconfig.cpp)
     target_link_libraries(tst_crabconfig PRIVATE crabcore Qt6::Test)
     add_test(NAME crabconfig COMMAND tst_crabconfig)
+
+    qt_add_executable(tst_crabcontroller tests/tst_crabcontroller.cpp)
+    target_link_libraries(tst_crabcontroller PRIVATE crabcore Qt6::Test)
+    add_test(NAME crabcontroller COMMAND tst_crabcontroller)
 
     add_test(
         NAME crab_hooks

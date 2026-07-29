@@ -23,12 +23,25 @@ from typing import Any, Iterable
 
 MARKER = "# claude-crab:v1"
 
-STATE_DIR = "$HOME/.local/state/claude-crab/inbox"
+# Mirrors inboxDir() in src/main.cpp. Both sides must agree, and both
+# honour XDG_STATE_HOME so a non-default state root still works.
+STATE_DIR = "${XDG_STATE_HOME:-$HOME/.local/state}/claude-crab/inbox"
 
+# Payloads embed tool_input, which for a large Write or Edit can run to
+# megabytes. The crab needs only session_id, hook_event_name and tool_name, and
+# Claude Code emits all three before tool_input, so a byte cap keeps every field
+# that matters. SessionTracker salvages those fields when a file is truncated.
+HOOK_MAX_BYTES = 16384
+
+# `truncate -s '<N'` shrinks to at most N and leaves smaller files alone. It is
+# used in preference to `head -c N`, which would close the pipe early and hand
+# the writing process an EPIPE for every oversized payload.
+#
 # Write to a temp name and rename, so the watcher never sees a partial file.
 COMMAND = (
     f'd="{STATE_DIR}"; mkdir -p "$d"; f="$d/$(date +%s%N)"; '
-    f'cat > "$f.tmp" && mv "$f.tmp" "$f.json" {MARKER}'
+    f'cat > "$f.tmp" && truncate -s "<{HOOK_MAX_BYTES}" "$f.tmp" && '
+    f'mv "$f.tmp" "$f.json" {MARKER}'
 )
 
 # Events the crab needs. PreToolUse/PostToolUse take a tool matcher; the rest
@@ -142,12 +155,42 @@ def write_settings(path: Path, data: dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
+# Backups are cheap but they are also forever; keep a useful history, not an
+# unbounded one.
+MAX_BACKUPS = 5
+
+
+def prune_backups(path: Path) -> int:
+    """Delete all but the newest MAX_BACKUPS backups of @p path."""
+    existing = sorted(
+        path.parent.glob(f"{path.name}.crab-backup-*"),
+        key=lambda p: p.name,
+        reverse=True,
+    )
+    removed = 0
+    for stale in existing[MAX_BACKUPS:]:
+        try:
+            stale.unlink()
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
 def backup(path: Path) -> Path | None:
     if not path.exists():
         return None
     stamp = time.strftime("%Y%m%d-%H%M%S")
     dest = path.with_name(f"{path.name}.crab-backup-{stamp}")
+    # Second resolution collides when two runs land in the same second, which
+    # would silently overwrite the older backup -- the one more likely to hold
+    # the pre-crab state worth recovering.
+    suffix = 1
+    while dest.exists():
+        suffix += 1
+        dest = path.with_name(f"{path.name}.crab-backup-{stamp}-{suffix}")
     shutil.copy2(path, dest)
+    prune_backups(path)
     return dest
 
 

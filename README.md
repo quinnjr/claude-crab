@@ -134,6 +134,46 @@ minutes (a `SIGKILL`ed session never sends `Stop` or `SessionEnd`).
 | session finished | `celebrate` once |
 | tool failed | `tumble` once |
 
+## Right-click menu
+
+Right-clicking the character opens a menu for switching sprite variants. The
+choice is written to the config file straight away, so it survives the restarts
+a systemd-managed service makes routine.
+
+The window is not globally click-through. Input is confined to the character's
+own rectangle by a window mask that tracks it as it walks, so a right click on
+the character reaches the menu while every other pixel of the strip still passes
+clicks through to whatever is underneath. The mask is updated on a timer and
+ignores sub-threshold moves, because each change is a Wayland commit.
+
+The menu is drawn inside the window rather than as a popup: the window reserves
+`menuHeadroom` pixels of transparent space above the walking band for it. A
+popup would be a second surface parented to a layer-shell surface, which is far
+more fragile for no benefit here.
+
+## Keeping the inbox bounded
+
+The hooks write whether or not the crab is running, so two limits apply.
+
+**Per file.** `PreToolUse` payloads embed `tool_input`, which for a large `Write`
+or `Edit` runs to megabytes. The hook caps each file at 16 KiB with
+`truncate -s '<N'`. Claude Code emits `session_id`, `hook_event_name` and
+`tool_name` before `tool_input`, so the cap keeps everything the crab needs;
+when a file is cut mid-string, `SessionTracker` salvages those fields by scanning
+rather than dropping the event. `tool_response` sits after `tool_input`, so a
+truncated payload loses only the error blip.
+
+`truncate` is used rather than `head -c`, which would close the pipe early and
+hand the writing process an EPIPE for every oversized payload.
+
+**Per directory.** On startup and once a minute the crab drops events older than
+`inboxMaxAgeMinutes` — a session state from an hour ago says nothing about now —
+and then drops the oldest until the directory is under `inboxMaxMegabytes`.
+Abandoned `.tmp` files from a hook killed mid-write are swept the same way.
+Anything dropped is logged; the crab never discards events silently.
+
+Installer backups are bounded too: the newest five are kept per settings file.
+
 ## Configuration
 
 `~/.config/claude-crab.json`, every key optional:
@@ -145,7 +185,10 @@ minutes (a `SIGKILL`ed session never sends `Stop` or `SessionEnd`).
   "output": "DP-1",
   "sleepCorner": "right",
   "sprite": "default",
+  "menuHeadroom": 220,
   "staleTimeoutMinutes": 10,
+  "inboxMaxAgeMinutes": 60,
+  "inboxMaxMegabytes": 32,
   "reactions": {
     "waiting": true,
     "finished": true,

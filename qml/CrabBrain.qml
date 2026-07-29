@@ -37,6 +37,12 @@ Item {
 
     readonly property real maxX: Math.max(0, width - crab.width)
 
+    /** The character's current rectangle, for the window input region. */
+    readonly property rect crabRect: Qt.rect(crab.x, crab.y + height - crab.height * crab.scale,
+                                             crab.width * crab.scale, crab.height * crab.scale)
+
+    signal contextMenuRequested(real x, real y)
+
     function gaitForTool(name) {
         if (!reactions.toolFlavour)
             return "walk"
@@ -99,6 +105,15 @@ Item {
         onAnimationFinished: function (name) {
             if (name === brain.reaction)
                 brain.reaction = ""
+        }
+
+        // Only the character is interactive; the window mask is kept in step
+        // with this item so every other pixel of the strip stays click-through.
+        TapHandler {
+            acceptedButtons: Qt.RightButton
+            gesturePolicy: TapHandler.ReleaseWithinBounds
+            onTapped: brain.contextMenuRequested(crab.x + crab.width / 2,
+                                                 brain.mapToItem(null, 0, 0).y)
         }
     }
 

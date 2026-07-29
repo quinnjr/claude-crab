@@ -16,9 +16,15 @@ Claude Code is currently doing.
 
 - Roaming across multiple monitors. One configured output only.
 - Per-session crabs. A single crab reflects aggregate state.
-- Interaction. The crab is click-through and has no menu, tooltip, or drag behaviour.
-- Runtime sprite switching. The variant is chosen at startup from config or
-  `--sprite`; changing it takes a restart.
+- Dragging or repositioning the character by hand.
+- A full settings UI. The right-click menu switches sprite variants and nothing
+  else; everything else lives in the config file.
+
+**Superseded.** The original design listed interaction as a non-goal, with the
+window globally input-transparent. That was reversed to support the right-click
+menu: input is now confined to the character's rectangle by a window mask, which
+keeps the rest of the strip click-through while making the character itself
+clickable.
 
 ## Environment
 
@@ -301,6 +307,9 @@ A systemd `--user` unit, `WantedBy=graphical-session.target`.
 | `output` | first screen | Connector name, e.g. `DP-1` |
 | `sleepCorner` | `"right"` | `"left"` or `"right"` |
 | `sprite` | `"default"` | `"default"` or `"fancy"` (top hat and monocle) |
+| `menuHeadroom` | `220` | Transparent space above the strip for the right-click menu |
+| `inboxMaxAgeMinutes` | `60` | Events older than this are pruned |
+| `inboxMaxMegabytes` | `32` | Inbox byte budget, oldest dropped first |
 | `staleTimeoutMinutes` | `10` | Session retirement threshold |
 | `reactions` | all `true` | Per-reaction toggles: `waiting`, `finished`, `error`, `toolFlavour` |
 

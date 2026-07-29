@@ -3,6 +3,7 @@
  */
 
 #include "CrabConfig.h"
+#include "CrabController.h"
 #include "SessionTracker.h"
 
 #include <QCommandLineParser>
@@ -26,10 +27,28 @@ Q_DECLARE_LOGGING_CATEGORY(CRAB)
 namespace
 {
 
+/**
+ * Where hook events land.
+ *
+ * Deliberately not QStandardPaths::GenericStateLocation. The hooks run on the
+ * host -- Claude Code is not sandboxed -- so they always write to the host's
+ * $XDG_STATE_HOME. Inside a Flatpak, Qt would resolve that same call to
+ * ~/.var/app/<id>/.local/state and the crab would watch an empty directory
+ * forever. $CLAUDE_CRAB_STATE_DIR lets a sandboxed build point back at the real
+ * path; the Flatpak manifest sets it.
+ */
 QString inboxDir()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation)
-        + QStringLiteral("/claude-crab/inbox");
+    const QByteArray override = qgetenv("CLAUDE_CRAB_STATE_DIR");
+    if (!override.isEmpty()) {
+        return QString::fromLocal8Bit(override) + QStringLiteral("/inbox");
+    }
+
+    QString base = QString::fromLocal8Bit(qgetenv("XDG_STATE_HOME"));
+    if (base.isEmpty()) {
+        base = QDir::homePath() + QStringLiteral("/.local/state");
+    }
+    return base + QStringLiteral("/claude-crab/inbox");
 }
 
 /**
@@ -167,6 +186,8 @@ int main(int argc, char *argv[])
 
     auto *tracker = new SessionTracker(inboxDir(), &app);
     tracker->setStaleTimeoutMs(qint64(config.staleTimeoutMinutes) * 60 * 1000);
+    tracker->setInboxBudget(qint64(config.inboxMaxMegabytes) * 1024 * 1024,
+                            qint64(config.inboxMaxAgeMinutes) * 60 * 1000);
 
     const bool demo = parser.isSet(demoOption);
     const bool replay = parser.isSet(replayOption);
@@ -177,9 +198,9 @@ int main(int argc, char *argv[])
                                              config.toVariantMap());
     engine.rootContext()->setContextProperty(QStringLiteral("demoMode"), demo);
     engine.rootContext()->setContextProperty(QStringLiteral("crabManifest"), loadManifest());
-    engine.rootContext()->setContextProperty(
-        QStringLiteral("spriteSheetUrl"),
-        QStringLiteral("qrc:/qt/qml/ClaudeCrab/assets/") + config.spriteFileName());
+    auto *controller =
+        new CrabController(parser.value(configOption), config.sprite, &app);
+    engine.rootContext()->setContextProperty(QStringLiteral("crabController"), controller);
 
     engine.loadFromModule(QStringLiteral("ClaudeCrab"), QStringLiteral("Main"));
     if (engine.rootObjects().isEmpty()) {
@@ -193,9 +214,14 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // The window is NOT WindowTransparentForInput: the character has to be
+    // right-clickable. Input is confined to its rectangle instead, via a mask
+    // CrabController keeps in step with it, so every other pixel of the strip
+    // still passes clicks through to whatever is underneath.
+    const int windowHeight = config.stripHeight + config.menuHeadroom;
     window->setColor(Qt::transparent);
-    window->setFlag(Qt::WindowTransparentForInput); // clicks pass through
-    window->setHeight(config.stripHeight);
+    window->setHeight(windowHeight);
+    controller->setWindow(window);
 
     QScreen *screen = pickScreen(config.output);
     if (screen) {
@@ -217,7 +243,7 @@ int main(int argc, char *argv[])
             layer->setKeyboardInteractivity(
                 LayerShellQt::Window::KeyboardInteractivityNone);
             layer->setActivateOnShow(false);
-            layer->setDesiredSize(QSize(0, config.stripHeight));
+            layer->setDesiredSize(QSize(0, windowHeight));
             if (screen) {
                 layer->setScreen(screen);
             }
@@ -232,8 +258,8 @@ int main(int argc, char *argv[])
                          | Qt::Tool);
         if (screen) {
             const QRect available = screen->availableGeometry();
-            window->setGeometry(available.x(), available.bottom() - config.stripHeight + 1,
-                                available.width(), config.stripHeight);
+            window->setGeometry(available.x(), available.bottom() - windowHeight + 1,
+                                available.width(), windowHeight);
         }
     }
 

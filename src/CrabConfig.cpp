@@ -4,8 +4,11 @@
 
 #include "CrabConfig.h"
 
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
+#include <QSaveFile>
 #include <QJsonObject>
 #include <QLoggingCategory>
 #include <QStandardPaths>
@@ -54,12 +57,17 @@ CrabConfig CrabConfig::load(const QString &path)
 
     const QJsonObject obj = doc.object();
     config.stripHeight = obj.value(QLatin1String("stripHeight")).toInt(config.stripHeight);
+    config.menuHeadroom = obj.value(QLatin1String("menuHeadroom")).toInt(config.menuHeadroom);
     config.crabScale = obj.value(QLatin1String("crabScale")).toDouble(config.crabScale);
     config.output = obj.value(QLatin1String("output")).toString(config.output);
     config.sleepCorner = obj.value(QLatin1String("sleepCorner")).toString(config.sleepCorner);
     config.sprite = obj.value(QLatin1String("sprite")).toString(config.sprite);
     config.staleTimeoutMinutes =
         obj.value(QLatin1String("staleTimeoutMinutes")).toInt(config.staleTimeoutMinutes);
+    config.inboxMaxAgeMinutes =
+        obj.value(QLatin1String("inboxMaxAgeMinutes")).toInt(config.inboxMaxAgeMinutes);
+    config.inboxMaxMegabytes =
+        obj.value(QLatin1String("inboxMaxMegabytes")).toInt(config.inboxMaxMegabytes);
 
     if (obj.value(QLatin1String("reactions")).isObject()) {
         const QJsonObject reactions = obj.value(QLatin1String("reactions")).toObject();
@@ -82,6 +90,20 @@ CrabConfig CrabConfig::load(const QString &path)
                         << "known variants:" << CrabConfig::spriteVariants();
         config.sprite = QStringLiteral("default");
     }
+    if (config.menuHeadroom < 0) {
+        qCWarning(CRAB) << "menuHeadroom cannot be negative; using 0";
+        config.menuHeadroom = 0;
+    }
+    // A zero or negative budget would disable pruning entirely, which is the
+    // one setting that cannot be allowed: the inbox would grow without bound.
+    if (config.inboxMaxAgeMinutes < 1) {
+        qCWarning(CRAB) << "inboxMaxAgeMinutes must be at least 1; using 60";
+        config.inboxMaxAgeMinutes = 60;
+    }
+    if (config.inboxMaxMegabytes < 1) {
+        qCWarning(CRAB) << "inboxMaxMegabytes must be at least 1; using 32";
+        config.inboxMaxMegabytes = 32;
+    }
     if (config.stripHeight < 16) {
         qCWarning(CRAB) << "stripHeight" << config.stripHeight << "is too small; using 72";
         config.stripHeight = 72;
@@ -90,15 +112,47 @@ CrabConfig CrabConfig::load(const QString &path)
     return config;
 }
 
+bool CrabConfig::saveSprite(const QString &path, const QString &variant)
+{
+    // Read-modify-write rather than serialising the whole struct: the file
+    // belongs to the user, who may have keys this build does not know about.
+    QJsonObject obj;
+    QFile in(path);
+    if (in.exists() && in.open(QIODevice::ReadOnly)) {
+        const QJsonDocument doc = QJsonDocument::fromJson(in.readAll());
+        if (doc.isObject()) {
+            obj = doc.object();
+        } else if (in.size() > 0) {
+            qCWarning(CRAB) << path << "is not a JSON object; refusing to overwrite it";
+            return false;
+        }
+        in.close();
+    }
+
+    obj.insert(QLatin1String("sprite"), variant);
+
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QSaveFile out(path);
+    if (!out.open(QIODevice::WriteOnly)) {
+        qCWarning(CRAB) << "cannot write" << path << out.errorString();
+        return false;
+    }
+    out.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+    return out.commit();
+}
+
 QVariantMap CrabConfig::toVariantMap() const
 {
     return {
         {QStringLiteral("stripHeight"), stripHeight},
+        {QStringLiteral("menuHeadroom"), menuHeadroom},
         {QStringLiteral("crabScale"), crabScale},
         {QStringLiteral("output"), output},
         {QStringLiteral("sleepCorner"), sleepCorner},
         {QStringLiteral("sprite"), sprite},
         {QStringLiteral("staleTimeoutMinutes"), staleTimeoutMinutes},
+        {QStringLiteral("inboxMaxAgeMinutes"), inboxMaxAgeMinutes},
+        {QStringLiteral("inboxMaxMegabytes"), inboxMaxMegabytes},
         {QStringLiteral("reactions"), reactions},
     };
 }

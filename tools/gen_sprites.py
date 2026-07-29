@@ -329,6 +329,35 @@ def build_sheet(fancy: bool = False) -> tuple[Image.Image, dict]:
     return sheet, manifest
 
 
+# --- application icon ------------------------------------------------------
+
+ICON_SIZES = (32, 48, 64, 128, 256)
+
+
+def build_icon(size: int, fancy: bool = False) -> Image.Image:
+    """Render the standing pose as a square app icon at @p size.
+
+    Reuses the sprite renderer rather than keeping a separate icon asset, so the
+    icon cannot drift from the character. Scaling is nearest-neighbour and the
+    source is cropped tight then padded to a square, which keeps the blocks
+    square at every size.
+    """
+    frame = _draw_crab(_pose(legs=STAND), fancy=fancy)
+
+    box = frame.getbbox()
+    if box is None:
+        raise AssertionError("icon pose rendered nothing")
+    art = frame.crop(box)
+
+    # Pad to square around the art, leaving one cell of margin.
+    side = max(art.width, art.height) + 2 * CELL
+    square = Image.new("RGBA", (side, side), TRANSPARENT)
+    square.alpha_composite(art, ((side - art.width) // 2, (side - art.height) // 2))
+
+    # Scale by whole pixels where possible so blocks stay crisp.
+    return square.resize((size, size), Image.NEAREST)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -336,6 +365,11 @@ def main() -> None:
         type=Path,
         default=Path(__file__).resolve().parent.parent / "assets",
         help="directory to write spritesheet.png and manifest.json into",
+    )
+    parser.add_argument(
+        "--icons",
+        type=Path,
+        help="also write hicolor-style app icons into this directory",
     )
     args = parser.parse_args()
 
@@ -351,6 +385,13 @@ def main() -> None:
 
     (args.out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(f"wrote {args.out / 'manifest.json'}")
+
+    if args.icons:
+        args.icons.mkdir(parents=True, exist_ok=True)
+        for size in ICON_SIZES:
+            path = args.icons / f"{size}.png"
+            build_icon(size).save(path)
+            print(f"wrote {path}")
 
 
 if __name__ == "__main__":

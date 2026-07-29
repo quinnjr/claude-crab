@@ -306,6 +306,50 @@ def test_status_json_is_machine_readable(env, capsys):
     assert report[0]["events"]["PreToolUse"] == "installed"
 
 
+def test_command_caps_payload_size():
+    """tool_input can run to megabytes; the file that lands must not."""
+    assert f'truncate -s "<{crab_hooks.HOOK_MAX_BYTES}"' in crab_hooks.COMMAND
+    # head -c would close the pipe early and hand the writer an EPIPE.
+    assert "head -c" not in crab_hooks.COMMAND
+
+
+def test_command_caps_before_the_atomic_rename():
+    """Truncating after the rename would expose an oversized file to the
+    watcher, and truncating a file it is already reading."""
+    cmd = crab_hooks.COMMAND
+    assert cmd.index("truncate") < cmd.index("mv ")
+
+
+def test_backups_are_pruned_to_a_bounded_history(env):
+    path = settings_of(env, "work")
+    path.write_text(json.dumps({"model": "opus"}))
+
+    # Each install takes a backup; without pruning these accrue forever.
+    for i in range(crab_hooks.MAX_BACKUPS + 4):
+        path.write_text(json.dumps({"model": f"opus-{i}"}))
+        crab_hooks.backup(path)
+
+    backups = list(path.parent.glob("settings.json.crab-backup-*"))
+    assert len(backups) == crab_hooks.MAX_BACKUPS
+
+
+def test_pruning_keeps_the_newest_backups(env, monkeypatch):
+    path = settings_of(env, "work")
+    path.write_text("{}")
+
+    for stamp in ("20200101-000000", "20990101-000000", "20500101-000000"):
+        (path.parent / f"settings.json.crab-backup-{stamp}").write_text("{}")
+
+    monkeypatch.setattr(crab_hooks, "MAX_BACKUPS", 2)
+    crab_hooks.prune_backups(path)
+
+    remaining = sorted(p.name for p in path.parent.glob("settings.json.crab-backup-*"))
+    assert remaining == [
+        "settings.json.crab-backup-20500101-000000",
+        "settings.json.crab-backup-20990101-000000",
+    ]
+
+
 def test_command_is_shell_safe_and_marked():
     assert crab_hooks.COMMAND.rstrip().endswith(crab_hooks.MARKER)
     # The marker must be a comment, not an argument, or every hook invocation

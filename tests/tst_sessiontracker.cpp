@@ -6,6 +6,8 @@
 
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QDateTime>
+#include <QDir>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -45,6 +47,20 @@ private Q_SLOTS:
     void failedToolEmitsErrored_data();
     void failedToolEmitsErrored();
     void aggregateChangedNotSpammed();
+
+    // Truncation salvage
+    void salvagesTruncatedPayload();
+    void salvageKeepsToolName();
+    void salvageIgnoresLaterOccurrencesInToolInput();
+    void salvageRejectsUnusableInput_data();
+    void salvageRejectsUnusableInput();
+    void truncatedFileStillDrivesTheCrab();
+
+    // Inbox budget
+    void pruneDropsStaleEvents();
+    void pruneKeepsRecentEvents();
+    void pruneEnforcesByteBudgetOldestFirst();
+    void pruneRemovesAbandonedTempFiles();
 
     // Filesystem path
     void drainsInboxInTimestampOrder();
@@ -249,14 +265,175 @@ void TestSessionTracker::aggregateChangedNotSpammed()
     QCOMPARE(spy.count(), 0);
 }
 
-// --- filesystem path -------------------------------------------------------
-
 static void writeEvent(const QDir &dir, const QString &name, const QByteArray &body)
 {
     QFile f(dir.filePath(name));
     QVERIFY(f.open(QIODevice::WriteOnly));
     f.write(body);
 }
+
+// --- truncation salvage ----------------------------------------------------
+//
+// The hook caps each payload, so an oversized tool_input is cut mid-string.
+// Everything the crab needs is emitted before tool_input, in the real field
+// order Claude Code uses:
+//   session_id, transcript_path, cwd, prompt_id, permission_mode, effort,
+//   hook_event_name, tool_name, tool_input, ...
+
+static QByteArray truncatedPayload()
+{
+    return QByteArray(
+        R"({"session_id":"s-1","transcript_path":"/tmp/t.jsonl","cwd":"/home/x",)"
+        R"("prompt_id":"p-1","permission_mode":"default","effort":"high",)"
+        R"("hook_event_name":"PreToolUse","tool_name":"Bash",)"
+        R"("tool_input":{"command":"echo aaaaaaaaaaaaaaaaaaaa)");
+}
+
+void TestSessionTracker::salvagesTruncatedPayload()
+{
+    const QJsonObject salvaged = SessionTracker::salvage(truncatedPayload());
+    QCOMPARE(salvaged.value("session_id").toString(), QStringLiteral("s-1"));
+    QCOMPARE(salvaged.value("hook_event_name").toString(), QStringLiteral("PreToolUse"));
+}
+
+void TestSessionTracker::salvageKeepsToolName()
+{
+    QCOMPARE(SessionTracker::salvage(truncatedPayload()).value("tool_name").toString(),
+             QStringLiteral("Bash"));
+}
+
+void TestSessionTracker::salvageIgnoresLaterOccurrencesInToolInput()
+{
+    // Editing this very project means tool_input can contain the literal text
+    // of these keys. First match must win, because the real fields come first.
+    const QByteArray raw =
+        R"({"session_id":"real","hook_event_name":"PreToolUse","tool_name":"Edit",)"
+        R"("tool_input":{"new_string":""session_id":"decoy"")";
+    const QJsonObject salvaged = SessionTracker::salvage(raw);
+    QCOMPARE(salvaged.value("session_id").toString(), QStringLiteral("real"));
+}
+
+void TestSessionTracker::salvageRejectsUnusableInput_data()
+{
+    QTest::addColumn<QByteArray>("raw");
+
+    QTest::newRow("empty") << QByteArray();
+    QTest::newRow("not json at all") << QByteArray("hello world");
+    QTest::newRow("no session id")
+        << QByteArray(R"({"hook_event_name":"Stop","tool_name":"Bash")");
+    QTest::newRow("no event name") << QByteArray(R"({"session_id":"s-1","cwd":"/tmp")");
+    QTest::newRow("cut before any field") << QByteArray(R"({"session)");
+}
+
+void TestSessionTracker::salvageRejectsUnusableInput()
+{
+    QFETCH(QByteArray, raw);
+    QVERIFY(SessionTracker::salvage(raw).isEmpty());
+}
+
+void TestSessionTracker::truncatedFileStillDrivesTheCrab()
+{
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    writeEvent(QDir(tmp.path()), QStringLiteral("100.json"), truncatedPayload());
+
+    SessionTracker t(tmp.path());
+    t.poll();
+
+    QCOMPARE(t.aggregateState(), SessionTracker::Working);
+    QCOMPARE(t.currentTool(), QStringLiteral("Bash"));
+}
+
+// --- inbox budget ----------------------------------------------------------
+
+static void writeAged(const QDir &dir, const QString &name, const QByteArray &body,
+                      qint64 ageMs)
+{
+    const QString path = dir.filePath(name);
+    QFile f(path);
+    QVERIFY(f.open(QIODevice::WriteOnly));
+    f.write(body);
+    f.close();
+
+    // Age it only after the write has been flushed: closing the file updates
+    // the modification time again, undoing any change made while it was open.
+    QFile aged(path);
+    QVERIFY(aged.open(QIODevice::ReadOnly));
+    QVERIFY(aged.setFileTime(QDateTime::currentDateTime().addMSecs(-ageMs),
+                             QFileDevice::FileModificationTime));
+    aged.close();
+}
+
+void TestSessionTracker::pruneDropsStaleEvents()
+{
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QDir dir(tmp.path());
+
+    // The hooks keep writing while the crab is stopped. An hour later those
+    // events say nothing about the present, and must not accumulate forever.
+    writeAged(dir, QStringLiteral("old.json"), "{}", 90 * 60 * 1000);
+
+    SessionTracker t(tmp.path());
+    t.setInboxBudget(32 * 1024 * 1024, 60 * 60 * 1000);
+    t.pruneInbox(QDateTime::currentMSecsSinceEpoch());
+
+    QCOMPARE(dir.entryList({QStringLiteral("*.json")}, QDir::Files).size(), 0);
+}
+
+void TestSessionTracker::pruneKeepsRecentEvents()
+{
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QDir dir(tmp.path());
+    writeAged(dir, QStringLiteral("fresh.json"), "{}", 5 * 60 * 1000);
+
+    SessionTracker t(tmp.path());
+    t.setInboxBudget(32 * 1024 * 1024, 60 * 60 * 1000);
+    t.pruneInbox(QDateTime::currentMSecsSinceEpoch());
+
+    QCOMPARE(dir.entryList({QStringLiteral("*.json")}, QDir::Files).size(), 1);
+}
+
+void TestSessionTracker::pruneEnforcesByteBudgetOldestFirst()
+{
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QDir dir(tmp.path());
+
+    const QByteArray body(1000, 'x');
+    for (int i = 0; i < 10; ++i) {
+        writeAged(dir, QStringLiteral("%1.json").arg(i, 3, 10, QLatin1Char('0')), body, 1000);
+    }
+
+    SessionTracker t(tmp.path());
+    t.setInboxBudget(3500, 60 * 60 * 1000); // room for three
+    t.pruneInbox(QDateTime::currentMSecsSinceEpoch());
+
+    const QStringList left = dir.entryList({QStringLiteral("*.json")}, QDir::Files, QDir::Name);
+    QCOMPARE(left.size(), 3);
+    // The newest survive: recent events are the ones still worth acting on.
+    QCOMPARE(left.first(), QStringLiteral("007.json"));
+}
+
+void TestSessionTracker::pruneRemovesAbandonedTempFiles()
+{
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QDir dir(tmp.path());
+
+    // A hook killed between cat and mv leaves one of these behind, and nothing
+    // else ever looks at it.
+    writeAged(dir, QStringLiteral("123.tmp"), "partial", 90 * 60 * 1000);
+
+    SessionTracker t(tmp.path());
+    t.setInboxBudget(32 * 1024 * 1024, 60 * 60 * 1000);
+    t.pruneInbox(QDateTime::currentMSecsSinceEpoch());
+
+    QCOMPARE(dir.entryList({QStringLiteral("*.tmp")}, QDir::Files).size(), 0);
+}
+
+// --- filesystem path -------------------------------------------------------
 
 void TestSessionTracker::drainsInboxInTimestampOrder()
 {

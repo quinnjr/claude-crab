@@ -78,6 +78,24 @@ public:
     /** Retire sessions with no event since @p nowMs - staleTimeoutMs. */
     void sweepStale(qint64 nowMs);
 
+    /**
+     * Enforce the inbox budget: drop events older than @p maxAgeMs, then drop
+     * the oldest remaining until the directory is under @p maxBytes.
+     *
+     * The hooks keep writing whether or not the crab is running, so without
+     * this the inbox grows without limit across a logged-out weekend. Stale
+     * events are worthless anyway -- a session state from an hour ago says
+     * nothing about now.
+     */
+    void setInboxBudget(qint64 maxBytes, qint64 maxAgeMs);
+    void pruneInbox(qint64 nowMs);
+
+    /**
+     * Recover the fields the crab needs from a payload the hook truncated.
+     * Returns an empty object if @p raw does not yield a usable event.
+     */
+    static QJsonObject salvage(const QByteArray &raw);
+
     /** At most this many files are drained per poll, oldest first. */
     static constexpr int MaxFilesPerPoll = 200;
 
@@ -105,6 +123,8 @@ private:
     State m_aggregate = Idle;
     QString m_currentTool;
     qint64 m_staleTimeoutMs = 10 * 60 * 1000;
+    qint64 m_inboxMaxBytes = 32LL * 1024 * 1024;
+    qint64 m_inboxMaxAgeMs = 60 * 60 * 1000;
     qint64 m_sequence = 0;
     int m_lastCount = 0;
 
