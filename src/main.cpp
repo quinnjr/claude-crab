@@ -117,7 +117,7 @@ int main(int argc, char *argv[])
     // LayerShellQt::Window::get() is called on it, before it is shown.
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("claude-crab"));
-    app.setApplicationVersion(QStringLiteral("1.0.0"));
+    app.setApplicationVersion(QStringLiteral("1.1.0"));
     app.setOrganizationDomain(QStringLiteral("quinnjr.dev"));
     // Reverse-DNS app id, matching the convention used by this author's
     // other Plasma work. KWin keys window rules and stacking off it.

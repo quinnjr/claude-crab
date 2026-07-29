@@ -64,6 +64,14 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.1.0" date="2026-07-29">
+      <description>
+        <p>
+          Adds a party hat variant, and fixes the event inbox growing without
+          bound while the crab was not running.
+        </p>
+      </description>
+    </release>
     <release version="1.0.0" date="2026-07-28">
       <description>
         <p>First release.</p>
