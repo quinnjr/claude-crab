@@ -72,8 +72,13 @@ window, so a launcher entry would either do nothing visible or start a second
 crab. Flathub's linter treats that as an error and grants exceptions for
 background services, so the submission needs one requested.
 
-`packaging/flathub/README.md` covers that and the remaining blockers — chiefly
-metainfo screenshots — along with how to run both halves of the linter.
+`packaging/flathub/README.md` covers that and the remaining blockers, along with
+how to run both halves of the linter.
+
+Note that Flathub does not currently accept AI-assisted applications, and this
+one was written with heavy AI assistance. The manifest is kept working and
+linted, but a submission is not on the cards as things stand — see that file for
+the policy text.
 
 Note that the Flatpak asks for no access to Claude Code's `settings.json`. Hook
 entries are arbitrary shell commands, so write access to that file amounts to

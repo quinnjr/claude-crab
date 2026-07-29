@@ -20,6 +20,34 @@ The manifest check and the repo check catch different things — the manifest
 check passes clean while the repo check still reports the items below, so run
 both.
 
+## Blocker: Flathub's generative AI policy
+
+**This project cannot be submitted to Flathub as things stand.** Flathub's
+requirements state:
+
+> Applications containing AI-generated or AI-assisted code, documentation, or
+> any other content are not allowed.
+
+> Submission pull requests must not be generated, opened, or automated using AI
+> tools or agents.
+
+claude-crab was written with heavy AI assistance throughout — the source, the
+tests, the sprite generator, this manifest, the metainfo and the README. That is
+not a grey area under the wording above, and the policy applies to the
+submission itself as much as to the application.
+
+The documentation notes that "exceptions may be granted for mature,
+well-maintained projects", without saying who grants them or how. A project a
+few days old with a single author plainly is not that yet.
+
+Violating the policy risks rejection without review and, on repetition, a
+permanent ban — so the answer is not to submit quietly and hope. Either the
+project matures to the point where an exception is worth asking for openly, or
+it ships through channels without such a policy.
+
+Everything below stands as the technical checklist for whenever that changes;
+the build and lint results are still worth keeping current.
+
 ## Outstanding before submitting
 
 ### 1. `desktop-file-is-nodisplay` — needs a linter exception
