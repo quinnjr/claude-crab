@@ -233,11 +233,16 @@ this order:
 
 1. `--config-dir <path>` — explicit, wins over everything.
 2. `--profile <name>` — resolves to `$XDG_DATA_HOME/claude-profiles/<name>`.
-3. `--all` (**the default when no flag is given**) — every directory under
-   `$XDG_DATA_HOME/claude-profiles/` that contains a `settings.json` or is otherwise
-   a plausible config dir.
+3. `--all`, passed explicitly — every profile directory under
+   `$XDG_DATA_HOME/claude-profiles/`.
 4. `$CLAUDE_HOME`, then `$CLAUDE_CONFIG_DIR`, if either is set in the environment.
-5. `~/.claude`.
+5. Auto-discovered profiles — **this is what a bare invocation does**, and it is
+   equivalent to `--all`.
+6. `~/.claude`.
+
+Environment variables sit above auto-discovery but below an explicit `--all`: a set
+`CLAUDE_HOME` is a deliberate signal about which config is in play, while a bare
+invocation has no such signal and should cover everything.
 
 `CLAUDE_HOME` is checked first among the environment variables even though
 `claude-profiles` currently exports `CLAUDE_CONFIG_DIR`, so an explicit override

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Claude Crab
+GenericName=Claude Code activity companion
+Comment=A crab that walks above your panel while Claude Code works
+Exec=claude-crab
+Icon=dev.quinnjr.claude-crab
+Categories=Utility;
+Terminal=false
+NoDisplay=true
+X-KDE-autostart-phase=2

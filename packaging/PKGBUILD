@@ -1,0 +1,29 @@
+# Maintainer: Joseph R. Quinn <quinn.josephr@gmail.com>
+pkgname=claude-crab
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="A crab that walks above your panel while Claude Code works"
+arch=('x86_64')
+url="https://github.com/quinnjr/claude-crab"
+license=('MIT')
+depends=('qt6-base' 'qt6-declarative' 'layer-shell-qt')
+makedepends=('cmake' 'ninja' 'python' 'python-pillow')
+checkdepends=('python-pytest')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cmake -B build -S "$pkgname-$pkgver" -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr
+  cmake --build build
+}
+
+check() {
+  ctest --test-dir build --output-on-failure
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+  install -Dm644 "$pkgname-$pkgver/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
