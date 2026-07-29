@@ -99,6 +99,7 @@ void TestCrabConfig::spriteFileNameMatchesVariant_data()
 
     QTest::newRow("default") << "default" << "spritesheet.png";
     QTest::newRow("fancy") << "fancy" << "spritesheet-fancy.png";
+    QTest::newRow("party") << "party" << "spritesheet-party.png";
 }
 
 void TestCrabConfig::spriteFileNameMatchesVariant()

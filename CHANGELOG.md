@@ -5,6 +5,22 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- A `party` sprite variant wearing a birthday hat, selectable from the
+  right-click menu alongside the existing two.
+
+### Changed
+
+- The Flatpak no longer requests access to Claude Code's `settings.json`. Hook
+  entries are arbitrary shell commands, so write access there amounts to
+  unsandboxed code execution on the host. Hooks are installed host-side
+  instead; the crab only ever reads events.
+- The Flatpak grants `fallback-x11`, so it starts in an X11 session and degrades
+  to the frameless always-on-top window rather than failing to launch.
+
 ## [1.0.0] — 2026-07-28
 
 First release.

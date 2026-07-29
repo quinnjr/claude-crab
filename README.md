@@ -248,7 +248,8 @@ and falls back rather than failing to start.
 
 ### Sprite variants
 
-`sprite` selects the look: `"default"`, or `"fancy"` for a top hat and monocle.
+`sprite` selects the look: `"default"`, `"fancy"` for a top hat and monocle, or
+`"party"` for a birthday hat.
 `--sprite <variant>` overrides the config file for one run, which is the quick
 way to compare them. An unknown value on the command line is a hard error —
 there it is a typo worth surfacing, whereas in a config file it should not stop
@@ -264,6 +265,10 @@ so switching costs nothing at runtime.
 time; the PNG is not checked in, so art and manifest cannot drift apart. The
 manifest is the contract — a hand-drawn replacement sheet needs no QML change so
 long as the row/frame layout matches.
+
+Three variants are emitted — plain, `fancy` (top hat and monocle) and `party`
+(birthday hat) — sharing one manifest, since they differ only in what is drawn
+inside a frame.
 
 The character is drawn as flat terracotta `#D06A4B` blocks on a coarse grid,
 with no outline and no shading: a 12x8 cell body — torso, two square eyes, a nub

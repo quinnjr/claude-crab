@@ -19,13 +19,17 @@ QStringList CrabConfig::spriteVariants()
 {
     // Mirrors VARIANTS in tools/gen_sprites.py; adding one there means adding
     // it here and to the CMake resource list.
-    return {QStringLiteral("default"), QStringLiteral("fancy")};
+    return {QStringLiteral("default"), QStringLiteral("fancy"), QStringLiteral("party")};
 }
 
 QString CrabConfig::spriteFileName() const
 {
-    return sprite == QLatin1String("fancy") ? QStringLiteral("spritesheet-fancy.png")
-                                            : QStringLiteral("spritesheet.png");
+    // The plain sheet keeps its unsuffixed name; every other variant is
+    // spritesheet-<variant>.png, so adding one needs no code change here.
+    if (sprite == QLatin1String("default")) {
+        return QStringLiteral("spritesheet.png");
+    }
+    return QStringLiteral("spritesheet-%1.png").arg(sprite);
 }
 
 bool CrabConfig::insideFlatpak()

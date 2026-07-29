@@ -10,9 +10,9 @@ Poses are expressed in grid cells rather than pixels, because drawing off-grid
 is what makes a blocky sprite look wrong. The few places that do move by pixels
 (hops, blinks, lean) say so explicitly.
 
-Two variants are emitted: the plain character, and a 'fancy' one wearing a top
-hat and monocle. They share a single manifest, because they differ only in what
-is drawn inside a frame, never in the layout.
+Three variants are emitted: the plain character, a 'fancy' one in a top hat and
+monocle, and a 'party' one in a birthday hat. They share a single manifest,
+because they differ only in what is drawn inside a frame, never in the layout.
 
 The manifest is the contract between art and code: as long as a replacement PNG
 keeps the same row/frame layout, no QML has to change.
@@ -31,7 +31,7 @@ from PIL import Image, ImageDraw
 
 BODY = (208, 106, 75, 255)
 EYE = (43, 42, 38, 255)
-GLASS = (240, 238, 230, 255)  # monocle rim and chain, for contrast against EYE
+GLASS = (240, 238, 230, 255)  # monocle rim, party hat: reads against BODY and EYE
 TRANSPARENT = (0, 0, 0, 0)
 
 # --- geometry --------------------------------------------------------------
@@ -99,6 +99,33 @@ def _rect(d: ImageDraw.ImageDraw, col: float, row: float, w: float, h: float,
     d.rectangle([x0, y0, x0 + w * CELL - 1, y0 + h * CELL - 1], fill=fill)
 
 
+def _draw_party_hat(d: ImageDraw.ImageDraw, bx: int, by: int, p: dict) -> None:
+    """A birthday cone, for the 'party' variant.
+
+    A 6/4/2 stepped cone, banded light/dark/light. The taper has to come from
+    the tier widths: at four pixels per cell there is no room to draw a smooth
+    slope, and a near-cylinder reads as a chef's hat instead of a party one.
+
+    Tier widths stay even so every tier centres on the same column pair, and the
+    cone occupies the same three rows above the torso as the top hat, leaving
+    the frame-clipping budget unchanged.
+    """
+    hop = p["hop"]
+    lean = p["lean"]
+
+    _rect(d, bx + 3, by - 1, 6, 1, GLASS, px_dx=lean, px_dy=hop)
+    _rect(d, bx + 4, by - 2, 4, 1, GLASS, px_dx=lean, px_dy=hop)
+    # The top tier is the pom, not another tier of cone: a dark band across the
+    # middle instead just reads as a beanie.
+    _rect(d, bx + 5, by - 3, 2, 1, EYE, px_dx=lean, px_dy=hop)
+
+    # A single body-coloured stripe, at pixel resolution because a whole cell
+    # would swallow the tier it sits on.
+    stripe_y = (by - 1) * CELL + hop + 1
+    stripe_x = (bx + 3) * CELL + lean
+    d.rectangle([stripe_x, stripe_y, stripe_x + 6 * CELL - 1, stripe_y + 1], fill=BODY)
+
+
 def _draw_finery(d: ImageDraw.ImageDraw, bx: int, by: int, p: dict) -> None:
     """Top hat and monocle, for the 'fancy' variant.
 
@@ -124,7 +151,7 @@ def _draw_finery(d: ImageDraw.ImageDraw, bx: int, by: int, p: dict) -> None:
     d.line([(ex + CELL, ey + CELL + 1), (ex + CELL, ey + CELL + 3)], fill=GLASS)
 
 
-def _draw_crab(p: dict, fancy: bool = False) -> Image.Image:
+def _draw_crab(p: dict, variant: str = "default") -> Image.Image:
     """Render one pose into a FRAME x FRAME RGBA image, facing right."""
     img = Image.new("RGBA", (FRAME, FRAME), TRANSPARENT)
     d = ImageDraw.Draw(img)
@@ -160,8 +187,10 @@ def _draw_crab(p: dict, fancy: bool = False) -> Image.Image:
         y0 = (by + EYE_ROW) * CELL + hop + p["eye_dy"] + (CELL - height) // 2
         d.rectangle([x0, y0, x0 + CELL - 1, y0 + height - 1], fill=EYE)
 
-    if fancy:
+    if variant == "fancy":
         _draw_finery(d, bx, by, p)
+    elif variant == "party":
+        _draw_party_hat(d, bx, by, p)
 
     if p["rot"]:
         img = img.rotate(p["rot"], resample=Image.NEAREST, center=(FRAME / 2, FRAME / 2))
@@ -288,13 +317,16 @@ ANIMATIONS = [
 ]
 
 
+# Mirrors CrabConfig::spriteVariants() and spriteFileName(); adding one here
+# means adding it there and to the CMake resource list.
 VARIANTS = {
     "default": "spritesheet.png",
     "fancy": "spritesheet-fancy.png",
+    "party": "spritesheet-party.png",
 }
 
 
-def build_sheet(fancy: bool = False) -> tuple[Image.Image, dict]:
+def build_sheet(variant: str = "default") -> tuple[Image.Image, dict]:
     cols = max(a["frames"] for a in ANIMATIONS)
     rows = len(ANIMATIONS)
     sheet = Image.new("RGBA", (cols * FRAME, rows * FRAME), TRANSPARENT)
@@ -308,7 +340,7 @@ def build_sheet(fancy: bool = False) -> tuple[Image.Image, dict]:
                 f"manifest declares {anim['frames']}"
             )
         for col, pose in enumerate(poses):
-            sheet.alpha_composite(_draw_crab(pose, fancy), (col * FRAME, row * FRAME))
+            sheet.alpha_composite(_draw_crab(pose, variant), (col * FRAME, row * FRAME))
         manifest_anims.append(
             {
                 "name": anim["name"],
@@ -334,7 +366,7 @@ def build_sheet(fancy: bool = False) -> tuple[Image.Image, dict]:
 ICON_SIZES = (32, 48, 64, 128, 256)
 
 
-def build_icon(size: int, fancy: bool = False) -> Image.Image:
+def build_icon(size: int, variant: str = "default") -> Image.Image:
     """Render the standing pose as a square app icon at @p size.
 
     Reuses the sprite renderer rather than keeping a separate icon asset, so the
@@ -342,7 +374,7 @@ def build_icon(size: int, fancy: bool = False) -> Image.Image:
     source is cropped tight then padded to a square, which keeps the blocks
     square at every size.
     """
-    frame = _draw_crab(_pose(legs=STAND), fancy=fancy)
+    frame = _draw_crab(_pose(legs=STAND), variant)
 
     box = frame.getbbox()
     if box is None:
@@ -379,7 +411,7 @@ def main() -> None:
     # a frame, never in the row and frame layout.
     manifest = None
     for name, filename in VARIANTS.items():
-        sheet, manifest = build_sheet(fancy=(name == "fancy"))
+        sheet, manifest = build_sheet(name)
         sheet.save(args.out / filename)
         print(f"wrote {args.out / filename} ({sheet.width}x{sheet.height})")
 
