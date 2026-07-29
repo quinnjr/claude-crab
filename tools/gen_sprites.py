@@ -56,9 +56,25 @@ NUB_ROWS = (2, 3)
 LEG_ROWS = (6, 7)
 EYE_ROW = 1
 
+# Rows reserved above the torso for headwear. The party cone uses all four; the
+# plain character uses none, but poses size themselves against this so that
+# every variant stays inside the frame.
+ACCESSORY_ROWS = 5
+
 # Where the body sits when standing on the ground.
 REST_X = (GRID - BODY_W) // 2
 REST_Y = GRID - BODY_H - 1  # leaves the bottom row of the frame clear
+
+# Airborne poses centre the accessorised sprite, not just the torso. Quarter
+# turns transpose the bounding box, so a box centred in the square canvas is
+# safe at any of them -- but one centred on the torso alone puts a tall hat
+# through the top edge.
+AIRBORNE_Y = (GRID - BODY_H - ACCESSORY_ROWS) // 2 + ACCESSORY_ROWS
+
+# How far a pose may hop before the tallest accessory leaves the frame. Derived
+# rather than written down, because this is the second thing a taller hat
+# silently broke: the leap has to know how much headroom the hat already ate.
+MAX_HOP_PX = (REST_Y - ACCESSORY_ROWS) * CELL - 2
 
 
 def _pose(**overrides) -> dict:
@@ -99,6 +115,19 @@ def _rect(d: ImageDraw.ImageDraw, col: float, row: float, w: float, h: float,
     d.rectangle([x0, y0, x0 + w * CELL - 1, y0 + h * CELL - 1], fill=fill)
 
 
+# Column, in cells from the body's left edge, that the party cone centres on.
+CONE_CENTRE = 6
+
+
+def _cone_row(d: ImageDraw.ImageDraw, bx: int, by: int, row: int, width_px: int,
+              fill, lean: int, hop: int) -> None:
+    """One tier of the party cone: a cell-tall band of @p width_px, centred."""
+    cx = (bx + CONE_CENTRE) * CELL + lean
+    x0 = cx - width_px // 2
+    y0 = (by + row) * CELL + hop
+    d.rectangle([x0, y0, x0 + width_px - 1, y0 + CELL - 1], fill=fill)
+
+
 def _draw_party_hat(d: ImageDraw.ImageDraw, bx: int, by: int, p: dict) -> None:
     """A birthday cone, for the 'party' variant.
 
@@ -113,17 +142,22 @@ def _draw_party_hat(d: ImageDraw.ImageDraw, bx: int, by: int, p: dict) -> None:
     hop = p["hop"]
     lean = p["lean"]
 
-    _rect(d, bx + 3, by - 1, 6, 1, GLASS, px_dx=lean, px_dy=hop)
-    _rect(d, bx + 4, by - 2, 4, 1, GLASS, px_dx=lean, px_dy=hop)
-    # The top tier is the pom, not another tier of cone: a dark band across the
-    # middle instead just reads as a beanie.
-    _rect(d, bx + 5, by - 3, 2, 1, EYE, px_dx=lean, px_dy=hop)
+    # A cone needs more steps than the cell grid offers: 4 cells to 2 cells is
+    # one jump and reads as a two-tier cake. Stepping 16-12-8-4 needs 12px and
+    # 4px rows, so the tiers are placed at pixel resolution about a shared
+    # centre line rather than snapped to cells.
+    for row, width in ((-1, 16), (-2, 12), (-3, 8), (-4, 4)):
+        _cone_row(d, bx, by, row, width, GLASS, lean, hop)
+
+    # The pom overhangs the 4px tip, which is what makes it read as a pom
+    # rather than another tier.
+    _cone_row(d, bx, by, -5, 8, EYE, lean, hop)
 
     # A single body-coloured stripe, at pixel resolution because a whole cell
     # would swallow the tier it sits on.
     stripe_y = (by - 1) * CELL + hop + 1
-    stripe_x = (bx + 3) * CELL + lean
-    d.rectangle([stripe_x, stripe_y, stripe_x + 6 * CELL - 1, stripe_y + 1], fill=BODY)
+    stripe_x = (bx + CONE_CENTRE) * CELL + lean - 8
+    d.rectangle([stripe_x, stripe_y, stripe_x + 15, stripe_y + 1], fill=BODY)
 
 
 def _draw_finery(d: ImageDraw.ImageDraw, bx: int, by: int, p: dict) -> None:
@@ -157,7 +191,7 @@ def _draw_crab(p: dict, variant: str = "default") -> Image.Image:
     d = ImageDraw.Draw(img)
 
     bx = REST_X + p["dx"]
-    by = ((GRID - BODY_H) // 2 if p["airborne"] else REST_Y) + p["dy"]
+    by = (AIRBORNE_Y if p["airborne"] else REST_Y) + p["dy"]
     hop = p["hop"]
 
     # Torso. Only the top two rows carry the lean, so a fast gait reads as the
@@ -269,7 +303,7 @@ def anim_celebrate(n: int) -> list[dict]:
         frames.append(
             _pose(
                 legs=(1, 1, 1, 1) if arc > 0.3 else STAND,
-                hop=-round(arc * 10),
+                hop=-round(arc * MAX_HOP_PX),
                 nub_l=round(arc * 3),
                 nub_r=round(arc * 3),
             )
