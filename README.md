@@ -63,10 +63,14 @@ purely to run `gen_sprites.py` at build time, and is cleaned out of the result.
 `--socket=wayland` is granted but X11 is not: layer-shell is a Wayland protocol
 with no X11 equivalent, so the fallback path is of no use inside a sandbox.
 
-Still to do before a Flathub submission: swap the `dir` source for a tagged
-`git` source, add screenshots to the metainfo, and decide whether the desktop
-file should keep `NoDisplay=true` — Flathub expects a launchable entry, but a
-menu item for a background service is its own kind of wrong.
+`packaging/flathub/dev.quinnjr.claude-crab.yml` is the submission manifest: it
+is identical except that the `claude-crab` module builds from the tagged
+release, pinned to both tag and commit, rather than from the working tree.
+
+Still to do before submitting: add screenshots to the metainfo, and decide
+whether the desktop file should keep `NoDisplay=true` — Flathub expects a
+launchable entry, but a menu item for a background service is its own kind of
+wrong.
 
 The unit's `ExecStart` and install location are both derived from the prefix.
 systemd searches a fixed set of directories for user units and

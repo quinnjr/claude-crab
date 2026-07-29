@@ -1,0 +1,94 @@
+# SPDX-License-Identifier: MIT
+#
+# Flatpak manifest for claude-crab.
+#
+# This is the submission manifest: it builds from the tagged release rather
+# than the working tree. For local iteration use
+# packaging/dev.quinnjr.claude-crab.yml, which is identical apart from the
+# claude-crab module's source.
+#
+# The only subtle part is the state directory. Claude Code runs on the host and
+# is not sandboxed, so its hooks always write events to the host's
+# ~/.local/state/claude-crab/inbox. The --filesystem entry below binds that
+# directory through at the same path, and CrabConfig::inboxDir() skips the
+# sandbox's own XDG_STATE_HOME so the two sides meet. Without both halves the
+# crab watches an empty directory and simply never wakes up.
+
+id: dev.quinnjr.claude-crab
+runtime: org.kde.Platform
+runtime-version: '6.9'
+sdk: org.kde.Sdk
+command: claude-crab
+
+finish-args:
+  # Layer-shell is a Wayland protocol; there is no X11 equivalent, so the X11
+  # fallback path is deliberately not given a socket here.
+  - --socket=wayland
+  - --share=ipc
+  - --device=dri
+
+  # Hook events, written on the host by Claude Code. Spelled out rather than
+  # given as xdg-state/..., which flatpak does not accept as a location token.
+  # A host with a non-default XDG_STATE_HOME needs this overridden alongside
+  # $CLAUDE_CRAB_STATE_DIR.
+  - --filesystem=~/.local/state/claude-crab:create
+
+  # claude-crab-hooks edits Claude Code's settings.json. Both layouts are
+  # covered: a plain ~/.claude, and claude-profiles' per-profile directories.
+  - --filesystem=~/.claude
+  - --filesystem=xdg-data/claude-profiles
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /mkspecs
+
+modules:
+  # Build-time only: gen_sprites.py renders the sheets and icons. Vendored as a
+  # wheel rather than an sdist so the build needs no compiler for it and no
+  # network access, which Flathub forbids.
+  - name: python-pillow
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --no-deps --prefix=${FLATPAK_DEST} pillow-*.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/84/21/a35af28dcc61f37ed850a2d64c65c701321dfbf25085e469d5559360cbbf/pillow-12.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+        sha256: 78cb2c6865a35ab8ff8b75fd122f6033b92a62c82801110e48ddd6c936a45d91
+    cleanup:
+      - '*'
+
+  # Not shipped in org.kde.Platform, so it is built here.
+  #
+  # Pinned to 6.5.5 rather than the newest release: layer-shell-qt from Plasma
+  # 6.6 onward requires Qt 6.10, and org.kde.Sdk//6.9 carries Qt 6.9.3. The 6.5
+  # series targets Qt 6.9 and ECM 6.18, both satisfied by the runtime, so no
+  # extra-cmake-modules module is needed either. Revisit when a KDE runtime
+  # with Qt 6.10 ships.
+  - name: layer-shell-qt
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+    sources:
+      - type: archive
+        url: https://download.kde.org/stable/plasma/6.5.5/layer-shell-qt-6.5.5.tar.xz
+        sha256: 6844fee55b8b7cbc320cd8308b51595ef830d5a99b4d355b0fd59f88feab2c11
+
+  - name: claude-crab
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+    build-options:
+      env:
+        # So gen_sprites.py can find the vendored Pillow.
+        PYTHONPATH: /app/lib/python3.12/site-packages
+    sources:
+      # Pinned to both tag and commit: the tag is what a reader recognises, the
+      # commit is what makes the build reproducible if the tag ever moves.
+      - type: git
+        url: https://github.com/quinnjr/claude-crab.git
+        tag: v1.0.0
+        commit: 933c21618a47298284be399e93e13a8aecca0286
