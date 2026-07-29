@@ -12,6 +12,19 @@
 
 Q_DECLARE_LOGGING_CATEGORY(CRAB)
 
+QStringList CrabConfig::spriteVariants()
+{
+    // Mirrors VARIANTS in tools/gen_sprites.py; adding one there means adding
+    // it here and to the CMake resource list.
+    return {QStringLiteral("default"), QStringLiteral("fancy")};
+}
+
+QString CrabConfig::spriteFileName() const
+{
+    return sprite == QLatin1String("fancy") ? QStringLiteral("spritesheet-fancy.png")
+                                            : QStringLiteral("spritesheet.png");
+}
+
 QString CrabConfig::defaultPath()
 {
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
@@ -44,6 +57,7 @@ CrabConfig CrabConfig::load(const QString &path)
     config.crabScale = obj.value(QLatin1String("crabScale")).toDouble(config.crabScale);
     config.output = obj.value(QLatin1String("output")).toString(config.output);
     config.sleepCorner = obj.value(QLatin1String("sleepCorner")).toString(config.sleepCorner);
+    config.sprite = obj.value(QLatin1String("sprite")).toString(config.sprite);
     config.staleTimeoutMinutes =
         obj.value(QLatin1String("staleTimeoutMinutes")).toInt(config.staleTimeoutMinutes);
 
@@ -63,6 +77,11 @@ CrabConfig CrabConfig::load(const QString &path)
         qCWarning(CRAB) << "sleepCorner must be 'left' or 'right', got" << config.sleepCorner;
         config.sleepCorner = QStringLiteral("right");
     }
+    if (!CrabConfig::spriteVariants().contains(config.sprite)) {
+        qCWarning(CRAB) << "unknown sprite variant" << config.sprite << "- using default;"
+                        << "known variants:" << CrabConfig::spriteVariants();
+        config.sprite = QStringLiteral("default");
+    }
     if (config.stripHeight < 16) {
         qCWarning(CRAB) << "stripHeight" << config.stripHeight << "is too small; using 72";
         config.stripHeight = 72;
@@ -78,6 +97,7 @@ QVariantMap CrabConfig::toVariantMap() const
         {QStringLiteral("crabScale"), crabScale},
         {QStringLiteral("output"), output},
         {QStringLiteral("sleepCorner"), sleepCorner},
+        {QStringLiteral("sprite"), sprite},
         {QStringLiteral("staleTimeoutMinutes"), staleTimeoutMinutes},
         {QStringLiteral("reactions"), reactions},
     };

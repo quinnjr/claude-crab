@@ -17,9 +17,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import gen_sprites  # noqa: E402
 
 
-@pytest.fixture(scope="module")
-def built():
-    sheet, manifest = gen_sprites.build_sheet()
+@pytest.fixture(scope="module", params=["default", "fancy"])
+def built(request):
+    """Every invariant is checked against both sprite variants."""
+    sheet, manifest = gen_sprites.build_sheet(fancy=request.param == "fancy")
     return sheet, manifest
 
 
@@ -141,3 +142,50 @@ def test_writes_both_files(tmp_path):
     (tmp_path / "manifest.json").write_text(json.dumps(manifest))
     assert (tmp_path / "spritesheet.png").stat().st_size > 0
     assert json.loads((tmp_path / "manifest.json").read_text())["animations"]
+
+
+# --- variants --------------------------------------------------------------
+
+
+def test_variants_share_one_manifest():
+    """The two sheets differ only in what is drawn inside a frame. If the
+    layouts ever diverge, the single shipped manifest silently mis-indexes one
+    of them."""
+    _, plain = gen_sprites.build_sheet(fancy=False)
+    _, fancy = gen_sprites.build_sheet(fancy=True)
+    assert plain == fancy
+
+
+def test_fancy_actually_differs_from_default():
+    plain, _ = gen_sprites.build_sheet(fancy=False)
+    fancy, _ = gen_sprites.build_sheet(fancy=True)
+    assert plain.tobytes() != fancy.tobytes()
+
+
+def test_fancy_differs_in_every_frame():
+    """The hat has to survive every pose, including the rotated ones."""
+    plain, manifest = gen_sprites.build_sheet(fancy=False)
+    fancy, _ = gen_sprites.build_sheet(fancy=True)
+    fw, fh = manifest["frameWidth"], manifest["frameHeight"]
+    for anim in manifest["animations"]:
+        for col in range(anim["frames"]):
+            box = (col * fw, anim["row"] * fh, (col + 1) * fw, (anim["row"] + 1) * fh)
+            assert plain.crop(box).tobytes() != fancy.crop(box).tobytes(), (
+                f"{anim['name']} frame {col} is identical in both variants"
+            )
+
+
+def test_fancy_uses_the_monocle_colour():
+    """GLASS exists so the rim reads against the dark eye it surrounds; if the
+    monocle were drawn in EYE it would merge into a blob."""
+    fancy, _ = gen_sprites.build_sheet(fancy=True)
+    colours = {c for _, c in fancy.getcolors(maxcolors=1 << 16)}
+    assert gen_sprites.GLASS in colours
+
+    plain, _ = gen_sprites.build_sheet(fancy=False)
+    assert gen_sprites.GLASS not in {c for _, c in plain.getcolors(maxcolors=1 << 16)}
+
+
+def test_variant_filenames_are_distinct():
+    assert len(set(gen_sprites.VARIANTS.values())) == len(gen_sprites.VARIANTS)
+    assert "default" in gen_sprites.VARIANTS

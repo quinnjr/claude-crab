@@ -60,6 +60,7 @@ file.
 
 ```sh
 ./build/claude-crab                              # normal operation
+./build/claude-crab --sprite fancy               # top hat and monocle
 ./build/claude-crab --demo                       # cycle every animation
 ./build/claude-crab --replay fixtures/session.jsonl
 ```
@@ -126,6 +127,7 @@ minutes (a `SIGKILL`ed session never sends `Stop` or `SessionEnd`).
   "crabScale": 1.0,
   "output": "DP-1",
   "sleepCorner": "right",
+  "sprite": "default",
   "staleTimeoutMinutes": 10,
   "reactions": {
     "waiting": true,
@@ -136,7 +138,21 @@ minutes (a `SIGKILL`ed session never sends `Stop` or `SessionEnd`).
 }
 ```
 
-A missing or malformed file yields defaults rather than an error.
+A missing or malformed file yields defaults rather than an error, and an
+unrecognised value for a constrained key (`sleepCorner`, `sprite`) logs a warning
+and falls back rather than failing to start.
+
+### Sprite variants
+
+`sprite` selects the look: `"default"`, or `"fancy"` for a top hat and monocle.
+`--sprite <variant>` overrides the config file for one run, which is the quick
+way to compare them. An unknown value on the command line is a hard error —
+there it is a typo worth surfacing, whereas in a config file it should not stop
+the crab from running.
+
+Both sheets are compiled into the binary and share a single manifest: they
+differ only in what is drawn inside a frame, never in the row and frame layout,
+so switching costs nothing at runtime.
 
 ## The art
 

@@ -5,6 +5,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 #include <QVariantMap>
 
 /**
@@ -17,6 +18,8 @@ struct CrabConfig {
     qreal crabScale = 1.0;
     QString output; // connector name, e.g. "DP-1"; empty means primary
     QString sleepCorner = QStringLiteral("right");
+    /** Sprite variant: "default" or "fancy" (top hat and monocle). */
+    QString sprite = QStringLiteral("default");
     int staleTimeoutMinutes = 10;
     QVariantMap reactions{
         {QStringLiteral("waiting"), true},
@@ -26,6 +29,10 @@ struct CrabConfig {
     };
 
     static QString defaultPath();
+    /** Sprite variant names this build knows how to render. */
+    static QStringList spriteVariants();
+    /** Sheet file name for the selected variant. */
+    QString spriteFileName() const;
     static CrabConfig load(const QString &path);
 
     /** Shape handed to QML. */

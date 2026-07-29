@@ -142,12 +142,28 @@ int main(int argc, char *argv[])
     QCommandLineOption configOption(QStringLiteral("config"),
                                     QStringLiteral("Path to claude-crab.json."),
                                     QStringLiteral("file"), CrabConfig::defaultPath());
+    QCommandLineOption spriteOption(
+        QStringLiteral("sprite"),
+        QStringLiteral("Sprite variant, overriding the config file: %1.")
+            .arg(CrabConfig::spriteVariants().join(QStringLiteral(", "))),
+        QStringLiteral("variant"));
     parser.addOption(demoOption);
     parser.addOption(replayOption);
     parser.addOption(configOption);
+    parser.addOption(spriteOption);
     parser.process(app);
 
-    const CrabConfig config = CrabConfig::load(parser.value(configOption));
+    CrabConfig config = CrabConfig::load(parser.value(configOption));
+    if (parser.isSet(spriteOption)) {
+        const QString requested = parser.value(spriteOption);
+        if (!CrabConfig::spriteVariants().contains(requested)) {
+            qCCritical(CRAB) << "unknown sprite variant" << requested << "- expected one of"
+                             << CrabConfig::spriteVariants();
+            return 2;
+        }
+        config.sprite = requested;
+    }
+    qCInfo(CRAB) << "sprite variant:" << config.sprite;
 
     auto *tracker = new SessionTracker(inboxDir(), &app);
     tracker->setStaleTimeoutMs(qint64(config.staleTimeoutMinutes) * 60 * 1000);
@@ -162,8 +178,8 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("demoMode"), demo);
     engine.rootContext()->setContextProperty(QStringLiteral("crabManifest"), loadManifest());
     engine.rootContext()->setContextProperty(
-        QStringLiteral("assetsDir"),
-        QStringLiteral("qrc:/qt/qml/ClaudeCrab/assets"));
+        QStringLiteral("spriteSheetUrl"),
+        QStringLiteral("qrc:/qt/qml/ClaudeCrab/assets/") + config.spriteFileName());
 
     engine.loadFromModule(QStringLiteral("ClaudeCrab"), QStringLiteral("Main"));
     if (engine.rootObjects().isEmpty()) {

@@ -17,6 +17,8 @@ reflect what Claude Code is currently doing.
 - Roaming across multiple monitors. One configured output only.
 - Per-session crabs. A single crab reflects aggregate state.
 - Interaction. The crab is click-through and has no menu, tooltip, or drag behaviour.
+- Runtime sprite switching. The variant is chosen at startup from config or
+  `--sprite`; changing it takes a restart.
 
 ## Environment
 
@@ -272,6 +274,7 @@ A systemd `--user` unit, `WantedBy=graphical-session.target`.
 | `crabScale` | `1.0` | Sprite scale multiplier |
 | `output` | first screen | Connector name, e.g. `DP-1` |
 | `sleepCorner` | `"right"` | `"left"` or `"right"` |
+| `sprite` | `"default"` | `"default"` or `"fancy"` (top hat and monocle) |
 | `staleTimeoutMinutes` | `10` | Session retirement threshold |
 | `reactions` | all `true` | Per-reaction toggles: `waiting`, `finished`, `error`, `toolFlavour` |
 

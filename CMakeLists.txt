@@ -24,17 +24,18 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 set(ASSET_DIR ${CMAKE_CURRENT_BINARY_DIR}/assets)
 set(SPRITE_SHEET ${ASSET_DIR}/spritesheet.png)
+set(SPRITE_SHEET_FANCY ${ASSET_DIR}/spritesheet-fancy.png)
 set(SPRITE_MANIFEST ${ASSET_DIR}/manifest.json)
 
 add_custom_command(
-    OUTPUT ${SPRITE_SHEET} ${SPRITE_MANIFEST}
+    OUTPUT ${SPRITE_SHEET} ${SPRITE_SHEET_FANCY} ${SPRITE_MANIFEST}
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_sprites.py
             --out ${ASSET_DIR}
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_sprites.py
     COMMENT "Generating crab sprite sheet"
     VERBATIM
 )
-add_custom_target(sprites DEPENDS ${SPRITE_SHEET} ${SPRITE_MANIFEST})
+add_custom_target(sprites DEPENDS ${SPRITE_SHEET} ${SPRITE_SHEET_FANCY} ${SPRITE_MANIFEST})
 
 # --- library ----------------------------------------------------------------
 # The state machine lives in its own target so the tests can link it without
@@ -58,6 +59,7 @@ add_dependencies(claude-crab sprites)
 # the resource paths at qrc:/qt/qml/ClaudeCrab/assets/... regardless of where
 # the build tree puts the generated files.
 set_source_files_properties(${SPRITE_SHEET} PROPERTIES QT_RESOURCE_ALIAS assets/spritesheet.png)
+set_source_files_properties(${SPRITE_SHEET_FANCY} PROPERTIES QT_RESOURCE_ALIAS assets/spritesheet-fancy.png)
 set_source_files_properties(${SPRITE_MANIFEST} PROPERTIES QT_RESOURCE_ALIAS assets/manifest.json)
 
 qt_add_qml_module(claude-crab
@@ -69,6 +71,7 @@ qt_add_qml_module(claude-crab
         qml/CrabBrain.qml
     RESOURCES
         ${SPRITE_SHEET}
+        ${SPRITE_SHEET_FANCY}
         ${SPRITE_MANIFEST}
     RESOURCE_PREFIX /qt/qml
 )
@@ -89,6 +92,10 @@ if(BUILD_TESTING)
     qt_add_executable(tst_sessiontracker tests/tst_sessiontracker.cpp)
     target_link_libraries(tst_sessiontracker PRIVATE crabcore Qt6::Test)
     add_test(NAME sessiontracker COMMAND tst_sessiontracker)
+
+    qt_add_executable(tst_crabconfig tests/tst_crabconfig.cpp)
+    target_link_libraries(tst_crabconfig PRIVATE crabcore Qt6::Test)
+    add_test(NAME crabconfig COMMAND tst_crabconfig)
 
     add_test(
         NAME crab_hooks

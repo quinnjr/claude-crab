@@ -22,9 +22,9 @@ Window {
 
         // Both come from C++: the manifest is parsed there so a packaging
         // failure is reported at startup rather than silently leaving the
-        // crab unrendered.
+        // crab unrendered, and the sheet URL depends on the selected variant.
         manifest: crabManifest
-        sheet: assetsDir + "/spritesheet.png"
+        sheet: spriteSheetUrl
 
         sessionState: demoMode ? 0 : tracker.aggregateState
         tool: demoMode ? "" : tracker.currentTool

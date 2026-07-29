@@ -10,8 +10,12 @@ Poses are expressed in grid cells rather than pixels, because drawing off-grid
 is what makes a blocky sprite look wrong. The few places that do move by pixels
 (hops, blinks, lean) say so explicitly.
 
-The manifest this writes is the contract between art and code: as long as a
-replacement PNG keeps the same row/frame layout, no QML has to change.
+Two variants are emitted: the plain character, and a 'fancy' one wearing a top
+hat and monocle. They share a single manifest, because they differ only in what
+is drawn inside a frame, never in the layout.
+
+The manifest is the contract between art and code: as long as a replacement PNG
+keeps the same row/frame layout, no QML has to change.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from PIL import Image, ImageDraw
 
 BODY = (208, 106, 75, 255)
 EYE = (43, 42, 38, 255)
+GLASS = (240, 238, 230, 255)  # monocle rim and chain, for contrast against EYE
 TRANSPARENT = (0, 0, 0, 0)
 
 # --- geometry --------------------------------------------------------------
@@ -94,7 +99,32 @@ def _rect(d: ImageDraw.ImageDraw, col: float, row: float, w: float, h: float,
     d.rectangle([x0, y0, x0 + w * CELL - 1, y0 + h * CELL - 1], fill=fill)
 
 
-def _draw_crab(p: dict) -> Image.Image:
+def _draw_finery(d: ImageDraw.ImageDraw, bx: int, by: int, p: dict) -> None:
+    """Top hat and monocle, for the 'fancy' variant.
+
+    Drawn after the body so it sits on top, and before rotation so the hat spins
+    with the wearer. The hat occupies the three cell rows above the torso, which
+    is why the resting body leaves that much headroom.
+    """
+    hop = p["hop"]
+    lean = p["lean"]
+
+    # Brim, then crown, then a body-coloured band so the hat is not a slab.
+    _rect(d, bx + 3, by - 1, 6, 1, EYE, px_dx=lean, px_dy=hop)
+    _rect(d, bx + 4, by - 3, 4, 2, EYE, px_dx=lean, px_dy=hop)
+    band_y = (by - 2) * CELL + hop + CELL - 2
+    band_x = (bx + 4) * CELL + lean
+    d.rectangle([band_x, band_y, band_x + 4 * CELL - 1, band_y + 1], fill=BODY)
+
+    # Monocle on the leading eye. The sprite is drawn facing right; QML mirrors
+    # it for leftward travel, so the monocle always stays on the front eye.
+    ex = (bx + EYE_COLS[1]) * CELL + lean
+    ey = (by + EYE_ROW) * CELL + hop + p["eye_dy"]
+    d.rectangle([ex - 1, ey - 1, ex + CELL, ey + CELL], outline=GLASS)
+    d.line([(ex + CELL, ey + CELL + 1), (ex + CELL, ey + CELL + 3)], fill=GLASS)
+
+
+def _draw_crab(p: dict, fancy: bool = False) -> Image.Image:
     """Render one pose into a FRAME x FRAME RGBA image, facing right."""
     img = Image.new("RGBA", (FRAME, FRAME), TRANSPARENT)
     d = ImageDraw.Draw(img)
@@ -129,6 +159,9 @@ def _draw_crab(p: dict) -> Image.Image:
         height = max(1, round(CELL * p["eye_open"]))
         y0 = (by + EYE_ROW) * CELL + hop + p["eye_dy"] + (CELL - height) // 2
         d.rectangle([x0, y0, x0 + CELL - 1, y0 + height - 1], fill=EYE)
+
+    if fancy:
+        _draw_finery(d, bx, by, p)
 
     if p["rot"]:
         img = img.rotate(p["rot"], resample=Image.NEAREST, center=(FRAME / 2, FRAME / 2))
@@ -255,7 +288,13 @@ ANIMATIONS = [
 ]
 
 
-def build_sheet() -> tuple[Image.Image, dict]:
+VARIANTS = {
+    "default": "spritesheet.png",
+    "fancy": "spritesheet-fancy.png",
+}
+
+
+def build_sheet(fancy: bool = False) -> tuple[Image.Image, dict]:
     cols = max(a["frames"] for a in ANIMATIONS)
     rows = len(ANIMATIONS)
     sheet = Image.new("RGBA", (cols * FRAME, rows * FRAME), TRANSPARENT)
@@ -269,7 +308,7 @@ def build_sheet() -> tuple[Image.Image, dict]:
                 f"manifest declares {anim['frames']}"
             )
         for col, pose in enumerate(poses):
-            sheet.alpha_composite(_draw_crab(pose), (col * FRAME, row * FRAME))
+            sheet.alpha_composite(_draw_crab(pose, fancy), (col * FRAME, row * FRAME))
         manifest_anims.append(
             {
                 "name": anim["name"],
@@ -301,10 +340,16 @@ def main() -> None:
     args = parser.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
-    sheet, manifest = build_sheet()
-    sheet.save(args.out / "spritesheet.png")
+
+    # Both variants share one manifest: they differ only in what is drawn inside
+    # a frame, never in the row and frame layout.
+    manifest = None
+    for name, filename in VARIANTS.items():
+        sheet, manifest = build_sheet(fancy=(name == "fancy"))
+        sheet.save(args.out / filename)
+        print(f"wrote {args.out / filename} ({sheet.width}x{sheet.height})")
+
     (args.out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    print(f"wrote {args.out / 'spritesheet.png'} ({sheet.width}x{sheet.height})")
     print(f"wrote {args.out / 'manifest.json'}")
 
 
