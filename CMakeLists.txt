@@ -37,6 +37,25 @@ add_custom_command(
 )
 add_custom_target(sprites DEPENDS ${SPRITE_SHEET} ${SPRITE_SHEET_FANCY} ${SPRITE_MANIFEST})
 
+# Application icons, rendered from the same code as the sprite so the icon can
+# never drift from the character.
+set(ICON_DIR ${CMAKE_CURRENT_BINARY_DIR}/icons)
+set(ICON_SIZES 32 48 64 128 256)
+set(ICON_FILES "")
+foreach(size IN LISTS ICON_SIZES)
+    list(APPEND ICON_FILES ${ICON_DIR}/${size}.png)
+endforeach()
+
+add_custom_command(
+    OUTPUT ${ICON_FILES}
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_sprites.py
+            --out ${ASSET_DIR} --icons ${ICON_DIR}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_sprites.py
+    COMMENT "Generating application icons"
+    VERBATIM
+)
+add_custom_target(icons ALL DEPENDS ${ICON_FILES})
+
 # --- library ----------------------------------------------------------------
 # The state machine lives in its own target so the tests can link it without
 # dragging in QtQuick or layer-shell.
@@ -143,3 +162,11 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/claude-crab.service
         DESTINATION ${SYSTEMD_USER_UNIT_DIR})
 install(FILES packaging/dev.quinnjr.claude-crab.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES packaging/dev.quinnjr.claude-crab.metainfo.xml
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+
+foreach(size IN LISTS ICON_SIZES)
+    install(FILES ${ICON_DIR}/${size}.png
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}x${size}/apps
+            RENAME dev.quinnjr.claude-crab.png)
+endforeach()

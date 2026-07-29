@@ -28,30 +28,6 @@ namespace
 {
 
 /**
- * Where hook events land.
- *
- * Deliberately not QStandardPaths::GenericStateLocation. The hooks run on the
- * host -- Claude Code is not sandboxed -- so they always write to the host's
- * $XDG_STATE_HOME. Inside a Flatpak, Qt would resolve that same call to
- * ~/.var/app/<id>/.local/state and the crab would watch an empty directory
- * forever. $CLAUDE_CRAB_STATE_DIR lets a sandboxed build point back at the real
- * path; the Flatpak manifest sets it.
- */
-QString inboxDir()
-{
-    const QByteArray override = qgetenv("CLAUDE_CRAB_STATE_DIR");
-    if (!override.isEmpty()) {
-        return QString::fromLocal8Bit(override) + QStringLiteral("/inbox");
-    }
-
-    QString base = QString::fromLocal8Bit(qgetenv("XDG_STATE_HOME"));
-    if (base.isEmpty()) {
-        base = QDir::homePath() + QStringLiteral("/.local/state");
-    }
-    return base + QStringLiteral("/claude-crab/inbox");
-}
-
-/**
  * Load the generated manifest out of the binary's resources.
  *
  * This deliberately happens in C++ rather than via XMLHttpRequest in QML: the
@@ -184,7 +160,7 @@ int main(int argc, char *argv[])
     }
     qCInfo(CRAB) << "sprite variant:" << config.sprite;
 
-    auto *tracker = new SessionTracker(inboxDir(), &app);
+    auto *tracker = new SessionTracker(CrabConfig::inboxDir(), &app);
     tracker->setStaleTimeoutMs(qint64(config.staleTimeoutMinutes) * 60 * 1000);
     tracker->setInboxBudget(qint64(config.inboxMaxMegabytes) * 1024 * 1024,
                             qint64(config.inboxMaxAgeMinutes) * 60 * 1000);
@@ -244,9 +220,10 @@ int main(int argc, char *argv[])
                 LayerShellQt::Window::KeyboardInteractivityNone);
             layer->setActivateOnShow(false);
             layer->setDesiredSize(QSize(0, windowHeight));
-            if (screen) {
-                layer->setScreen(screen);
-            }
+            // Output selection comes from QWindow::setScreen() above:
+            // LayerShellQt falls back to it when its own screen is unset, and
+            // Window::setScreen() only exists from layer-shell-qt 6.6, which is
+            // newer than the Qt 6.9 KDE runtime the Flatpak builds against.
         } else {
             qCWarning(CRAB) << "layer-shell unavailable; window will be a plain surface";
         }

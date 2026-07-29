@@ -35,6 +35,20 @@ struct CrabConfig {
     };
 
     static QString defaultPath();
+
+    /** True when running inside a Flatpak sandbox. */
+    static bool insideFlatpak();
+
+    /**
+     * Directory the hooks write events into.
+     *
+     * Deliberately not QStandardPaths::GenericStateLocation. The hooks run on
+     * the host -- Claude Code is not sandboxed -- so they always write to the
+     * host's state directory. Inside a Flatpak, XDG_STATE_HOME points at
+     * ~/.var/app/<id>/.local/state, and honouring it would leave the crab
+     * watching an empty directory forever.
+     */
+    static QString inboxDir(bool flatpak = insideFlatpak());
     /** Sprite variant names this build knows how to render. */
     static QStringList spriteVariants();
     /** Sheet file name for the selected variant. */

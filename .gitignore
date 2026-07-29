@@ -1,3 +1,5 @@
 /build/
 /assets/
 __pycache__/
+/build-flatpak/
+/.flatpak-builder/

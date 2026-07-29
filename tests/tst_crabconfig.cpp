@@ -4,6 +4,7 @@
 
 #include "CrabConfig.h"
 
+#include <QDir>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -21,6 +22,12 @@ private Q_SLOTS:
     void invalidSleepCornerFallsBack();
     void tinyStripHeightFallsBack();
     void unknownReactionIsIgnored();
+
+    void inboxDirHonoursExplicitOverride();
+    void inboxDirUsesXdgStateHomeOnTheHost();
+    void inboxDirIgnoresXdgStateHomeInsideFlatpak();
+    void inboxDirFallsBackToTheConventionalPath();
+    void inboxDirOverrideBeatsFlatpakDetection();
 
 private:
     QString write(const QByteArray &json);
@@ -125,6 +132,57 @@ void TestCrabConfig::unknownReactionIsIgnored()
     const CrabConfig config = CrabConfig::load(write(R"({"reactions": {"nonsense": false}})"));
     QVERIFY(!config.reactions.contains(QStringLiteral("nonsense")));
     QCOMPARE(config.reactions.size(), 4);
+}
+
+// --- inbox path ------------------------------------------------------------
+//
+// The hooks always write to the host's state directory, because Claude Code is
+// not sandboxed. Getting this wrong inside a Flatpak leaves the crab watching
+// an empty directory forever, with no error to explain it.
+
+void TestCrabConfig::inboxDirHonoursExplicitOverride()
+{
+    qputenv("CLAUDE_CRAB_STATE_DIR", "/somewhere/else");
+    QCOMPARE(CrabConfig::inboxDir(false), QStringLiteral("/somewhere/else/inbox"));
+    qunsetenv("CLAUDE_CRAB_STATE_DIR");
+}
+
+void TestCrabConfig::inboxDirUsesXdgStateHomeOnTheHost()
+{
+    qunsetenv("CLAUDE_CRAB_STATE_DIR");
+    qputenv("XDG_STATE_HOME", "/custom/state");
+    QCOMPARE(CrabConfig::inboxDir(false), QStringLiteral("/custom/state/claude-crab/inbox"));
+    qunsetenv("XDG_STATE_HOME");
+}
+
+void TestCrabConfig::inboxDirIgnoresXdgStateHomeInsideFlatpak()
+{
+    qunsetenv("CLAUDE_CRAB_STATE_DIR");
+    // What Flatpak actually sets: the sandbox's private state directory.
+    qputenv("XDG_STATE_HOME", "/home/u/.var/app/dev.quinnjr.claude-crab/.local/state");
+
+    const QString dir = CrabConfig::inboxDir(true);
+    QVERIFY2(!dir.contains(QLatin1String(".var/app")), qPrintable(dir));
+    QCOMPARE(dir, QDir::homePath() + QStringLiteral("/.local/state/claude-crab/inbox"));
+
+    qunsetenv("XDG_STATE_HOME");
+}
+
+void TestCrabConfig::inboxDirFallsBackToTheConventionalPath()
+{
+    qunsetenv("CLAUDE_CRAB_STATE_DIR");
+    qunsetenv("XDG_STATE_HOME");
+    QCOMPARE(CrabConfig::inboxDir(false),
+             QDir::homePath() + QStringLiteral("/.local/state/claude-crab/inbox"));
+}
+
+void TestCrabConfig::inboxDirOverrideBeatsFlatpakDetection()
+{
+    // The escape hatch for a host with a non-default XDG_STATE_HOME, which a
+    // sandboxed process has no way to discover on its own.
+    qputenv("CLAUDE_CRAB_STATE_DIR", "/host/state/claude-crab");
+    QCOMPARE(CrabConfig::inboxDir(true), QStringLiteral("/host/state/claude-crab/inbox"));
+    qunsetenv("CLAUDE_CRAB_STATE_DIR");
 }
 
 QTEST_MAIN(TestCrabConfig)

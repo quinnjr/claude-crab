@@ -33,8 +33,40 @@ cmake --install build
 ```
 
 That installs `claude-crab`, `claude-crab-hooks`, the `.desktop` file, and a
-systemd user unit. An Arch `PKGBUILD` for a system-wide install is in
-`packaging/`.
+systemd user unit. An Arch `PKGBUILD` for a system-wide install is in `packaging/`.
+
+## Flatpak
+
+```sh
+flatpak install --user flathub org.kde.Platform//6.9 org.kde.Sdk//6.9
+flatpak-builder --user --force-clean --install \
+  build-flatpak packaging/dev.quinnjr.claude-crab.yml
+flatpak run dev.quinnjr.claude-crab
+```
+
+Two things in the manifest are not obvious.
+
+**The state directory.** Claude Code runs on the host and is not sandboxed, so
+its hooks write to the host's `~/.local/state/claude-crab/inbox`. Inside the
+sandbox `XDG_STATE_HOME` points at `~/.var/app/<id>/.local/state`, so honouring
+it would leave the crab watching an empty directory with nothing to explain the
+silence. `CrabConfig::inboxDir()` skips `XDG_STATE_HOME` when `/.flatpak-info`
+exists, and the manifest binds the host directory through at the same path.
+`$CLAUDE_CRAB_STATE_DIR` overrides both, which is what a host with a
+non-default `XDG_STATE_HOME` needs.
+
+**Pinned dependencies.** `layer-shell-qt` is not in `org.kde.Platform`, so the
+manifest builds it — pinned to 6.5.5, because the 6.6 series onward needs Qt
+6.10 while `org.kde.Sdk//6.9` carries Qt 6.9.3. Pillow is vendored as a wheel
+purely to run `gen_sprites.py` at build time, and is cleaned out of the result.
+
+`--socket=wayland` is granted but X11 is not: layer-shell is a Wayland protocol
+with no X11 equivalent, so the fallback path is of no use inside a sandbox.
+
+Still to do before a Flathub submission: swap the `dir` source for a tagged
+`git` source, add screenshots to the metainfo, and decide whether the desktop
+file should keep `NoDisplay=true` — Flathub expects a launchable entry, but a
+menu item for a background service is its own kind of wrong.
 
 The unit's `ExecStart` and install location are both derived from the prefix.
 systemd searches a fixed set of directories for user units and

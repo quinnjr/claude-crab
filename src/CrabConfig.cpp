@@ -28,6 +28,33 @@ QString CrabConfig::spriteFileName() const
                                             : QStringLiteral("spritesheet.png");
 }
 
+bool CrabConfig::insideFlatpak()
+{
+    return QFile::exists(QStringLiteral("/.flatpak-info"));
+}
+
+QString CrabConfig::inboxDir(bool flatpak)
+{
+    // An explicit override always wins: it is the escape hatch for a host with
+    // a non-default XDG_STATE_HOME, which a sandbox cannot otherwise discover.
+    const QByteArray override = qgetenv("CLAUDE_CRAB_STATE_DIR");
+    if (!override.isEmpty()) {
+        return QString::fromLocal8Bit(override) + QStringLiteral("/inbox");
+    }
+
+    QString base;
+    if (!flatpak) {
+        base = QString::fromLocal8Bit(qgetenv("XDG_STATE_HOME"));
+    }
+    // Inside a Flatpak, XDG_STATE_HOME describes the sandbox's own state, not
+    // the host's, so it is skipped in favour of the conventional location --
+    // which the manifest binds through at the same path.
+    if (base.isEmpty()) {
+        base = QDir::homePath() + QStringLiteral("/.local/state");
+    }
+    return base + QStringLiteral("/claude-crab/inbox");
+}
+
 QString CrabConfig::defaultPath()
 {
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
