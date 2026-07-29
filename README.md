@@ -210,11 +210,20 @@ truncated payload loses only the error blip.
 `truncate` is used rather than `head -c`, which would close the pipe early and
 hand the writing process an EPIPE for every oversized payload.
 
-**Per directory.** On startup and once a minute the crab drops events older than
-`inboxMaxAgeMinutes` — a session state from an hour ago says nothing about now —
-and then drops the oldest until the directory is under `inboxMaxMegabytes`.
-Abandoned `.tmp` files from a hook killed mid-write are swept the same way.
-Anything dropped is logged; the crab never discards events silently.
+**Per directory, while the crab runs.** On startup and once a minute it drops
+events older than `inboxMaxAgeMinutes` — a session state from an hour ago says
+nothing about now — and then drops the oldest until the directory is under
+`inboxMaxMegabytes`. Abandoned `.tmp` files from a hook killed mid-write are
+swept the same way. Anything dropped is logged; the crab never discards events
+silently.
+
+**Per directory, while it does not.** The hooks fire whether or not the crab is
+running, so the crab cannot be the only thing that cleans up: stop the service,
+or uninstall it without removing the hooks, and the inbox would grow forever.
+The hook therefore carries its own sweep, sampled on the last digit of the
+timestamp so it runs about one write in ten and its cost stays out of the hot
+path. It is a backstop pinned to the default age limit, not the policy —
+`inboxMaxAgeMinutes` governs the crab, and the two only differ if you change it.
 
 Installer backups are bounded too: the newest five are kept per settings file.
 

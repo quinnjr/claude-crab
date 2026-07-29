@@ -12,6 +12,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - A `party` sprite variant wearing a birthday hat, selectable from the
   right-click menu alongside the existing two.
 
+### Fixed
+
+- The inbox could grow without bound whenever the crab was not running: it was
+  the only thing pruning, while the hooks write regardless. The hook now carries
+  its own amortised sweep, so a stopped or uninstalled crab no longer leaves
+  events piling up.
+
 ### Changed
 
 - The Flatpak no longer requests access to Claude Code's `settings.json`. Hook

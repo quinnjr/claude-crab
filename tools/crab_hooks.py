@@ -33,15 +33,32 @@ STATE_DIR = "${XDG_STATE_HOME:-$HOME/.local/state}/claude-crab/inbox"
 # that matters. SessionTracker salvages those fields when a file is truncated.
 HOOK_MAX_BYTES = 16384
 
+# The crab prunes the inbox itself, but only while it is running. The hooks keep
+# firing whether or not it is, so a stopped or uninstalled crab would otherwise
+# let the directory grow without bound. This sweep is the safety net: it matches
+# the daemon's default age limit and is deliberately a backstop, not the policy.
+HOOK_GC_AGE_MINUTES = 60
+
+# Sampled on the last digit of the nanosecond timestamp -- roughly one write in
+# ten -- so the cost of the sweep is amortised instead of paid on every tool
+# call. `case` is a shell builtin, so the other nine writes fork nothing extra.
+HOOK_GC_SAMPLE = "*0"
+
 # `truncate -s '<N'` shrinks to at most N and leaves smaller files alone. It is
 # used in preference to `head -c N`, which would close the pipe early and hand
 # the writing process an EPIPE for every oversized payload.
 #
 # Write to a temp name and rename, so the watcher never sees a partial file.
+#
+# The marker has to stay last: anything appended after it is inside the comment
+# and silently never runs.
 COMMAND = (
     f'd="{STATE_DIR}"; mkdir -p "$d"; f="$d/$(date +%s%N)"; '
     f'cat > "$f.tmp" && truncate -s "<{HOOK_MAX_BYTES}" "$f.tmp" && '
-    f'mv "$f.tmp" "$f.json" {MARKER}'
+    f'mv "$f.tmp" "$f.json"; '
+    f'case "$f" in {HOOK_GC_SAMPLE}) '
+    f'find "$d" -maxdepth 1 -type f -mmin +{HOOK_GC_AGE_MINUTES} -delete 2>/dev/null;; '
+    f'esac {MARKER}'
 )
 
 # Events the crab needs. PreToolUse/PostToolUse take a tool matcher; the rest
