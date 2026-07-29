@@ -5,14 +5,22 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.1] — 2026-07-29
+
+### Added
+
+- README instructions for installing the hooks from inside the Flatpak,
+  including that `flatpak run` passes the environment through — so a
+  `CLAUDE_CONFIG_DIR` exported by the launching shell outranks the default
+  unless `--unset-env` is passed.
 
 ### Changed
 
-- `claude-crab-hooks` now defaults to `~/.claude`, the one location every Claude
-  Code install has. `$CLAUDE_HOME` and `$CLAUDE_CONFIG_DIR` still take
-  precedence when set, and multi-profile setups opt in with `--all` or
-  `--profile` rather than being discovered implicitly.
+- **Behaviour change.** `claude-crab-hooks` now defaults to `~/.claude`, the one location every Claude
+  Code install has. Previously a bare invocation discovered and patched every
+  profile under `$XDG_DATA_HOME/claude-profiles/`; it no longer does.
+  `$CLAUDE_HOME` and `$CLAUDE_CONFIG_DIR` still take precedence when set, and
+  multi-profile setups opt in with `--all` or `--profile`.
 
 ### Fixed
 
@@ -87,5 +95,6 @@ First release.
   write to the host's. `CrabConfig::inboxDir()` accounts for this;
   `$CLAUDE_CRAB_STATE_DIR` overrides it.
 
+[1.1.1]: https://github.com/quinnjr/claude-crab/releases/tag/v1.1.1
 [1.1.0]: https://github.com/quinnjr/claude-crab/releases/tag/v1.1.0
 [1.0.0]: https://github.com/quinnjr/claude-crab/releases/tag/v1.0.0
