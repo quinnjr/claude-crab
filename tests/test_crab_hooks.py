@@ -70,11 +70,11 @@ def test_explicit_all_beats_env(env, monkeypatch):
     assert not (env / "from-env").exists()
 
 
-def test_env_beats_autodiscovery(env, monkeypatch):
+def test_env_beats_the_default(env, monkeypatch):
     monkeypatch.setenv("CLAUDE_HOME", str(env / "from-env"))
     run("install")
     assert (env / "from-env" / "settings.json").exists()
-    assert not settings_of(env, "work").exists()
+    assert not (env / ".claude").exists()
 
 
 def test_claude_home_beats_claude_config_dir(env, monkeypatch):
@@ -85,11 +85,30 @@ def test_claude_home_beats_claude_config_dir(env, monkeypatch):
     assert not (env / "b").exists()
 
 
-def test_bare_invocation_patches_every_profile(env):
-    """The default must not silently skip the non-selected profile."""
+def test_bare_invocation_targets_dot_claude(env):
+    """The default is the one location every Claude Code install has. Profiles
+    are opt-in through --all or --profile, not discovered behind the user's
+    back."""
     run("install")
+    assert (env / ".claude" / "settings.json").exists()
     for profile in ("personal", "work"):
-        assert settings_of(env, profile).exists()
+        assert not settings_of(env, profile).exists()
+
+
+def test_profiles_are_not_discovered_without_asking(env):
+    """Even with profiles present and no environment override, a bare run must
+    leave them alone."""
+    run("install")
+    assert not settings_of(env, "personal").exists()
+    assert not settings_of(env, "work").exists()
+
+
+def test_claude_config_dir_is_honoured_when_set(env, monkeypatch):
+    """This is how a claude-profiles shell names its active profile."""
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(settings_of(env, "work").parent))
+    run("install")
+    assert settings_of(env, "work").exists()
+    assert not (env / ".claude").exists()
 
 
 def test_falls_back_to_dot_claude_when_no_profiles(tmp_path, monkeypatch):
@@ -102,6 +121,29 @@ def test_falls_back_to_dot_claude_when_no_profiles(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     run("install")
     assert (home / ".claude" / "settings.json").exists()
+
+
+def test_flatpak_ignores_the_redirected_data_home(env, monkeypatch, tmp_path):
+    """Inside a Flatpak, XDG_DATA_HOME points into the sandbox. Honouring it
+    makes discovery resolve to an empty path and report phantom profiles
+    instead of touching the real ones."""
+    sandbox = tmp_path / "sandboxed-data"
+    (sandbox / "claude-profiles" / "ghost").mkdir(parents=True)
+    monkeypatch.setenv("XDG_DATA_HOME", str(sandbox))
+    monkeypatch.setattr(crab_hooks, "inside_flatpak", lambda: True)
+
+    found = [p.name for p in crab_hooks.discover_profiles()]
+    assert found == ["personal", "work"]
+    assert "ghost" not in found
+
+
+def test_host_still_honours_xdg_data_home(env, monkeypatch, tmp_path):
+    elsewhere = tmp_path / "elsewhere"
+    (elsewhere / "claude-profiles" / "solo").mkdir(parents=True)
+    monkeypatch.setenv("XDG_DATA_HOME", str(elsewhere))
+    monkeypatch.setattr(crab_hooks, "inside_flatpak", lambda: False)
+
+    assert [p.name for p in crab_hooks.discover_profiles()] == ["solo"]
 
 
 # --- install ---------------------------------------------------------------
@@ -249,6 +291,47 @@ def test_uninstall_never_removes_an_unmarked_lookalike(env):
     assert read(path)["hooks"]["Stop"][0]["hooks"][0]["command"] == handwritten
 
 
+def test_status_on_an_unreachable_dir_is_an_error_not_missing(env, capsys):
+    """A directory the process cannot see looks exactly like one with no hooks
+    installed. Reporting the latter would send someone hunting a phantom
+    install problem when the real fault is a missing Flatpak grant."""
+    code = run("--config-dir", str(env / "nowhere"), "status")
+    assert code == crab_hooks.EXIT_ERROR
+    err = capsys.readouterr().err
+    assert "not an accessible directory" in err
+    assert "missing" not in err
+
+
+def test_unreachable_hint_mentions_the_grant_only_in_a_flatpak(env, monkeypatch, capsys):
+    monkeypatch.setattr(crab_hooks, "inside_flatpak", lambda: True)
+    run("--config-dir", str(env / "nowhere"), "status")
+    assert "--filesystem=" in capsys.readouterr().err
+
+    monkeypatch.setattr(crab_hooks, "inside_flatpak", lambda: False)
+    run("--config-dir", str(env / "nowhere"), "status")
+    assert "--filesystem=" not in capsys.readouterr().err
+
+
+def test_install_may_still_create_a_missing_dir(env):
+    """install is the one verb allowed to bring the directory into existence."""
+    target = env / "brand-new"
+    assert run("--config-dir", str(target), "install") == crab_hooks.EXIT_OK
+    assert (target / "settings.json").exists()
+
+
+def test_unwritable_target_reports_instead_of_tracebacking(env, capsys):
+    target = env / "readonly"
+    target.mkdir()
+    (target / "settings.json").write_text("{}")
+    target.chmod(0o500)
+    try:
+        code = run("--config-dir", str(target), "install")
+        assert code == crab_hooks.EXIT_ERROR
+        assert "cannot write" in capsys.readouterr().err
+    finally:
+        target.chmod(0o700)
+
+
 def test_uninstall_on_missing_file_is_a_noop(env):
     assert run("--profile", "work", "uninstall") == crab_hooks.EXIT_OK
     assert not settings_of(env, "work").exists()
@@ -258,8 +341,9 @@ def test_uninstall_on_missing_file_is_a_noop(env):
 
 
 def test_invalid_json_is_skipped_and_other_targets_still_install(env, capsys):
+    """--all, because the point is that one bad target does not stop the rest."""
     settings_of(env, "work").write_text("{ this is not json")
-    code = run("install")
+    code = run("--all", "install")
     assert code == crab_hooks.EXIT_ERROR
     assert settings_of(env, "personal").exists()
     assert settings_of(env, "work").read_text() == "{ this is not json"

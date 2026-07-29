@@ -106,16 +106,74 @@ python3 tools/crab_hooks.py status
 python3 tools/crab_hooks.py uninstall
 ```
 
-By default it patches **every** profile under
-`$XDG_DATA_HOME/claude-profiles/`. That is deliberate: with more than one
-profile and a switchable default, patching only the active one would leave the
-other profile's sessions invisible to the crab. Override with `--config-dir`,
-`--profile <name>`, `$CLAUDE_HOME`, or `$CLAUDE_CONFIG_DIR`.
+It resolves the config directory in this order:
+
+| | Target |
+| --- | --- |
+| `--config-dir <path>` | exactly that directory |
+| `--profile <name>` | `$XDG_DATA_HOME/claude-profiles/<name>` |
+| `--all` | every profile under `$XDG_DATA_HOME/claude-profiles/` |
+| `$CLAUDE_HOME` | its value |
+| `$CLAUDE_CONFIG_DIR` | its value |
+| *(default)* | `~/.claude` |
+
+`~/.claude` is the default because it is the one location every Claude Code
+install has. Multi-profile setups opt in with `--all` or `--profile` rather than
+being discovered behind your back — and if you use `claude-profiles`, its shell
+wrapper exports `CLAUDE_CONFIG_DIR`, so a bare invocation already lands on the
+active profile without any flag.
 
 Every command it writes ends in an inert `# claude-crab:v1` shell comment.
 `uninstall` removes only entries carrying that marker, so a hand-written hook is
 never touched, and a timestamped backup is taken before the first change to each
 file.
+
+### From inside the Flatpak
+
+The Flatpak holds no permission to Claude Code's config — see [Flatpak](#flatpak)
+for why — so the hooks CLI needs it granted for the one invocation that installs
+them. The crab itself never holds it.
+
+```sh
+# The default target, ~/.claude
+flatpak run --unset-env=CLAUDE_CONFIG_DIR --unset-env=CLAUDE_HOME \
+  --filesystem=~/.claude \
+  --command=claude-crab-hooks dev.quinnjr.claude-crab install
+
+# Or a claude-profiles setup, patching every profile
+flatpak run --filesystem=xdg-data/claude-profiles \
+  --command=claude-crab-hooks dev.quinnjr.claude-crab --all install
+```
+
+The `--unset-env` flags are not decoration. `flatpak run` passes your
+environment through, so if the shell you launch from exports
+`CLAUDE_CONFIG_DIR` — which the `claude-profiles` wrapper does — it outranks the
+default and the command quietly targets that profile instead of `~/.claude`.
+Drop the flags when that is what you want.
+
+`--dry-run` works the same way and is worth running first. `status` and
+`uninstall` need the same `--filesystem` grant, since they read and rewrite the
+same file.
+
+Grant only the path you actually use: `--filesystem=~/.claude` does not cover
+`claude-profiles`, and vice versa. Get it wrong and the run says so —
+
+```
+/home/…/claude-profiles/personal: ERROR … is not an accessible directory
+  - inside a Flatpak this usually means the path was not granted,
+    e.g. --filesystem=/home/…/claude-profiles/personal
+```
+
+— rather than reporting every hook as missing, which is what an unreadable
+directory would otherwise look like.
+
+Discovery is sandbox-aware: inside a Flatpak `XDG_DATA_HOME` points at
+`~/.var/app/<id>/data`, so `--all` and `--profile` deliberately ignore it and
+read the host's `~/.local/share/claude-profiles` instead. Without that they
+would resolve to an empty sandbox path and report phantom profiles.
+
+Nothing stops you running the host copy instead — `tools/crab_hooks.py` is
+stdlib-only Python and needs no install.
 
 ## Run
 

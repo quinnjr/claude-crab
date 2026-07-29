@@ -5,6 +5,25 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `claude-crab-hooks` now defaults to `~/.claude`, the one location every Claude
+  Code install has. `$CLAUDE_HOME` and `$CLAUDE_CONFIG_DIR` still take
+  precedence when set, and multi-profile setups opt in with `--all` or
+  `--profile` rather than being discovered implicitly.
+
+### Fixed
+
+- `claude-crab-hooks` reported every hook as missing when it could not read the
+  config directory at all — indistinguishable from a clean install, and exactly
+  what happens inside a Flatpak without the matching `--filesystem` grant. It
+  now fails with an actionable message naming the path.
+- Profile discovery honoured the sandbox's redirected `XDG_DATA_HOME` inside a
+  Flatpak, resolving to an empty path and reporting phantom profiles.
+- An unwritable target produced a traceback instead of an error.
+
 ## [1.1.0] — 2026-07-29
 
 ### Added

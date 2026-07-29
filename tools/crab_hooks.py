@@ -83,9 +83,21 @@ EXIT_ERROR = 2
 # --- config directory resolution -------------------------------------------
 
 
+def inside_flatpak() -> bool:
+    return Path("/.flatpak-info").exists()
+
+
 def profiles_root() -> Path:
-    data_home = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    return Path(data_home) / "claude-profiles"
+    """Where claude-profiles keeps its per-profile config directories.
+
+    Claude Code runs on the host, so its profiles live under the host's
+    XDG_DATA_HOME. Inside a Flatpak that variable is redirected to
+    ~/.var/app/<id>/data, and honouring it makes discovery resolve to an empty
+    sandbox path -- reporting phantom profiles instead of touching the real
+    ones. Same reasoning as CrabConfig::inboxDir() on the C++ side.
+    """
+    data_home = "" if inside_flatpak() else os.environ.get("XDG_DATA_HOME", "")
+    return Path(data_home or Path.home() / ".local" / "share") / "claude-profiles"
 
 
 def discover_profiles() -> list[Path]:
@@ -103,10 +115,11 @@ def resolve_targets(args: argparse.Namespace) -> list[Path]:
     Precedence: --config-dir > --profile > --all > $CLAUDE_HOME >
     $CLAUDE_CONFIG_DIR > ~/.claude.
 
-    --all is the default when no flag is given, because this machine keeps one
-    config dir per profile and the selected profile is switchable. Patching only
-    the active profile would leave the other profile's sessions invisible to the
-    crab, which reads as a bug rather than a choice.
+    ~/.claude is the default, so a bare invocation touches the one location
+    every Claude Code install has. Multi-profile setups are opt-in through
+    --all or --profile rather than discovered behind the user's back, and the
+    two environment variables win over the default whenever they are set --
+    which is how a claude-profiles shell picks its active profile.
     """
     if args.config_dir:
         return [Path(args.config_dir).expanduser()]
@@ -125,11 +138,6 @@ def resolve_targets(args: argparse.Namespace) -> list[Path]:
         if value:
             return [Path(value).expanduser()]
 
-    if not args.all:
-        found = discover_profiles()
-        if found:
-            return found
-
     return [Path.home() / ".claude"]
 
 
@@ -142,6 +150,23 @@ class TargetError(Exception):
 
 def settings_path(config_dir: Path) -> Path:
     return config_dir / "settings.json"
+
+
+def check_reachable(config_dir: Path) -> None:
+    """Fail loudly when the config directory is not there to be read.
+
+    A missing directory and an unreadable one look identical to load_settings,
+    which returns {} for both -- so without this, running inside a Flatpak
+    without the matching --filesystem grant reports every hook as "missing"
+    rather than admitting it cannot see the file at all.
+    """
+    if config_dir.is_dir():
+        return
+    hint = ""
+    if inside_flatpak():
+        hint = (" - inside a Flatpak this usually means the path was not granted,"
+                f" e.g. --filesystem={config_dir}")
+    raise TargetError(f"{config_dir} is not an accessible directory{hint}")
 
 
 def load_settings(path: Path) -> dict[str, Any]:
@@ -391,6 +416,9 @@ def _apply(targets, args, transform, verb: str) -> int:
     for config_dir in targets:
         path = settings_path(config_dir)
         try:
+            # install may legitimately create the directory; the others may not.
+            if verb != "install":
+                check_reachable(config_dir)
             before = load_settings(path)
             after, changes = transform(before)
         except TargetError as exc:
@@ -407,8 +435,17 @@ def _apply(targets, args, transform, verb: str) -> int:
             print(diff(before, after, path), end="")
             continue
 
-        saved = backup(path)
-        write_settings(path, after)
+        try:
+            saved = backup(path)
+            write_settings(path, after)
+        except OSError as exc:
+            hint = ""
+            if inside_flatpak():
+                hint = (" - inside a Flatpak, grant the path with"
+                        f" --filesystem={config_dir}")
+            print(f"error: cannot write {path}: {exc}{hint}", file=sys.stderr)
+            exit_code = EXIT_ERROR
+            continue
         detail = f" (backup: {saved.name})" if saved else ""
         print(f"{config_dir}: {verb}ed {len(changes)} change(s){detail}")
         for change in changes:
@@ -424,6 +461,7 @@ def cmd_status(targets: Iterable[Path], args: argparse.Namespace) -> int:
     for config_dir in targets:
         path = settings_path(config_dir)
         try:
+            check_reachable(config_dir)
             data = load_settings(path)
         except TargetError as exc:
             report.append({"configDir": str(config_dir), "error": str(exc)})
@@ -444,7 +482,9 @@ def cmd_status(targets: Iterable[Path], args: argparse.Namespace) -> int:
 
     for entry in report:
         if "error" in entry:
-            print(f"{entry['configDir']}: ERROR {entry['error']}")
+            # stderr, so a caller piping the report does not mistake a
+            # permission problem for a finding about the hooks.
+            print(f"{entry['configDir']}: ERROR {entry['error']}", file=sys.stderr)
             continue
         mark = "ok" if entry["complete"] else "incomplete"
         print(f"{entry['configDir']}: {mark}")
