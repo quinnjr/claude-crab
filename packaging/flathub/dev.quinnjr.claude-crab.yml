@@ -2,9 +2,10 @@
 #
 # Flatpak manifest for claude-crab.
 #
-# Build and install locally:
-#   flatpak-builder --user --force-clean --install \
-#     build-flatpak packaging/dev.quinnjr.claude-crab.yml
+# This is the submission manifest: it builds from the tagged release rather
+# than the working tree. For local iteration use
+# packaging/dev.quinnjr.claude-crab.yml, which is identical apart from the
+# claude-crab module's source.
 #
 # The only subtle part is the state directory. Claude Code runs on the host and
 # is not sandboxed, so its hooks always write events to the host's
@@ -89,7 +90,9 @@ modules:
         # So gen_sprites.py can find the vendored Pillow.
         PYTHONPATH: /app/lib/python3.12/site-packages
     sources:
-      # For a Flathub submission this becomes a git source with a tag and
-      # commit; a dir source keeps local iteration fast.
-      - type: dir
-        path: ..
+      # Pinned to both tag and commit: the tag is what a reader recognises, the
+      # commit is what makes the build reproducible if the tag ever moves.
+      - type: git
+        url: https://github.com/quinnjr/claude-crab.git
+        tag: v1.0.0
+        commit: 933c21618a47298284be399e93e13a8aecca0286

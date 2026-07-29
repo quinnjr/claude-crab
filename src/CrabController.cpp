@@ -36,6 +36,9 @@ QString CrabController::labelFor(const QString &variant) const
     if (variant == QLatin1String("fancy")) {
         return tr("Top Hat and Monocle");
     }
+    if (variant == QLatin1String("party")) {
+        return tr("Party Hat");
+    }
     if (variant == QLatin1String("default")) {
         return tr("Plain");
     }

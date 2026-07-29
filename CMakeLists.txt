@@ -2,7 +2,7 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-project(claude-crab VERSION 1.0.0 LANGUAGES CXX)
+project(claude-crab VERSION 1.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -25,17 +25,18 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(ASSET_DIR ${CMAKE_CURRENT_BINARY_DIR}/assets)
 set(SPRITE_SHEET ${ASSET_DIR}/spritesheet.png)
 set(SPRITE_SHEET_FANCY ${ASSET_DIR}/spritesheet-fancy.png)
+set(SPRITE_SHEET_PARTY ${ASSET_DIR}/spritesheet-party.png)
 set(SPRITE_MANIFEST ${ASSET_DIR}/manifest.json)
 
 add_custom_command(
-    OUTPUT ${SPRITE_SHEET} ${SPRITE_SHEET_FANCY} ${SPRITE_MANIFEST}
+    OUTPUT ${SPRITE_SHEET} ${SPRITE_SHEET_FANCY} ${SPRITE_SHEET_PARTY} ${SPRITE_MANIFEST}
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_sprites.py
             --out ${ASSET_DIR}
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_sprites.py
     COMMENT "Generating crab sprite sheet"
     VERBATIM
 )
-add_custom_target(sprites DEPENDS ${SPRITE_SHEET} ${SPRITE_SHEET_FANCY} ${SPRITE_MANIFEST})
+add_custom_target(sprites DEPENDS ${SPRITE_SHEET} ${SPRITE_SHEET_FANCY} ${SPRITE_SHEET_PARTY} ${SPRITE_MANIFEST})
 
 # Application icons, rendered from the same code as the sprite so the icon can
 # never drift from the character.
@@ -83,6 +84,7 @@ add_dependencies(claude-crab sprites)
 # the build tree puts the generated files.
 set_source_files_properties(${SPRITE_SHEET} PROPERTIES QT_RESOURCE_ALIAS assets/spritesheet.png)
 set_source_files_properties(${SPRITE_SHEET_FANCY} PROPERTIES QT_RESOURCE_ALIAS assets/spritesheet-fancy.png)
+set_source_files_properties(${SPRITE_SHEET_PARTY} PROPERTIES QT_RESOURCE_ALIAS assets/spritesheet-party.png)
 set_source_files_properties(${SPRITE_MANIFEST} PROPERTIES QT_RESOURCE_ALIAS assets/manifest.json)
 
 qt_add_qml_module(claude-crab
@@ -96,6 +98,7 @@ qt_add_qml_module(claude-crab
     RESOURCES
         ${SPRITE_SHEET}
         ${SPRITE_SHEET_FANCY}
+        ${SPRITE_SHEET_PARTY}
         ${SPRITE_MANIFEST}
     RESOURCE_PREFIX /qt/qml
 )

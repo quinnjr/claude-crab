@@ -17,10 +17,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import gen_sprites  # noqa: E402
 
 
-@pytest.fixture(scope="module", params=["default", "fancy"])
+@pytest.fixture(scope="module", params=sorted(gen_sprites.VARIANTS))
 def built(request):
-    """Every invariant is checked against both sprite variants."""
-    sheet, manifest = gen_sprites.build_sheet(fancy=request.param == "fancy")
+    """Every invariant is checked against every sprite variant, so a new hat
+    cannot quietly clip the frame or stop animating."""
+    sheet, manifest = gen_sprites.build_sheet(request.param)
     return sheet, manifest
 
 
@@ -147,43 +148,56 @@ def test_writes_both_files(tmp_path):
 # --- variants --------------------------------------------------------------
 
 
+DRESSED = sorted(set(gen_sprites.VARIANTS) - {"default"})
+
+
 def test_variants_share_one_manifest():
-    """The two sheets differ only in what is drawn inside a frame. If the
-    layouts ever diverge, the single shipped manifest silently mis-indexes one
-    of them."""
-    _, plain = gen_sprites.build_sheet(fancy=False)
-    _, fancy = gen_sprites.build_sheet(fancy=True)
-    assert plain == fancy
+    """The sheets differ only in what is drawn inside a frame. If the layouts
+    ever diverge, the single shipped manifest silently mis-indexes one."""
+    _, base = gen_sprites.build_sheet("default")
+    for variant in DRESSED:
+        _, other = gen_sprites.build_sheet(variant)
+        assert base == other, variant
 
 
-def test_fancy_actually_differs_from_default():
-    plain, _ = gen_sprites.build_sheet(fancy=False)
-    fancy, _ = gen_sprites.build_sheet(fancy=True)
-    assert plain.tobytes() != fancy.tobytes()
+@pytest.mark.parametrize("variant", DRESSED)
+def test_each_variant_differs_from_default(variant):
+    plain, _ = gen_sprites.build_sheet("default")
+    dressed, _ = gen_sprites.build_sheet(variant)
+    assert plain.tobytes() != dressed.tobytes()
 
 
-def test_fancy_differs_in_every_frame():
-    """The hat has to survive every pose, including the rotated ones."""
-    plain, manifest = gen_sprites.build_sheet(fancy=False)
-    fancy, _ = gen_sprites.build_sheet(fancy=True)
+@pytest.mark.parametrize("variant", DRESSED)
+def test_each_variant_differs_in_every_frame(variant):
+    """Headwear has to survive every pose, including the rotated ones."""
+    plain, manifest = gen_sprites.build_sheet("default")
+    dressed, _ = gen_sprites.build_sheet(variant)
     fw, fh = manifest["frameWidth"], manifest["frameHeight"]
     for anim in manifest["animations"]:
         for col in range(anim["frames"]):
             box = (col * fw, anim["row"] * fh, (col + 1) * fw, (anim["row"] + 1) * fh)
-            assert plain.crop(box).tobytes() != fancy.crop(box).tobytes(), (
-                f"{anim['name']} frame {col} is identical in both variants"
+            assert plain.crop(box).tobytes() != dressed.crop(box).tobytes(), (
+                f"{variant}: {anim['name']} frame {col} is identical to default"
             )
 
 
-def test_fancy_uses_the_monocle_colour():
-    """GLASS exists so the rim reads against the dark eye it surrounds; if the
-    monocle were drawn in EYE it would merge into a blob."""
-    fancy, _ = gen_sprites.build_sheet(fancy=True)
-    colours = {c for _, c in fancy.getcolors(maxcolors=1 << 16)}
-    assert gen_sprites.GLASS in colours
+@pytest.mark.parametrize("variant", DRESSED)
+def test_accessories_use_the_light_colour(variant):
+    """GLASS exists so an accessory reads against both the body and the dark
+    eye it may sit beside; drawn in EYE alone it would merge into a blob."""
+    dressed, _ = gen_sprites.build_sheet(variant)
+    assert gen_sprites.GLASS in {c for _, c in dressed.getcolors(maxcolors=1 << 16)}
 
-    plain, _ = gen_sprites.build_sheet(fancy=False)
+
+def test_default_carries_no_accessory_colour():
+    plain, _ = gen_sprites.build_sheet("default")
     assert gen_sprites.GLASS not in {c for _, c in plain.getcolors(maxcolors=1 << 16)}
+
+
+def test_variants_are_distinct_from_each_other():
+    """Two hats that render identically would make the menu a lie."""
+    rendered = {v: gen_sprites.build_sheet(v)[0].tobytes() for v in gen_sprites.VARIANTS}
+    assert len(set(rendered.values())) == len(rendered)
 
 
 def test_variant_filenames_are_distinct():

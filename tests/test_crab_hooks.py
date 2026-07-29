@@ -350,6 +350,46 @@ def test_pruning_keeps_the_newest_backups(env, monkeypatch):
     ]
 
 
+def test_command_sweeps_the_inbox_itself():
+    """The crab prunes only while it is running, but the hooks fire regardless.
+    Without a sweep here, a stopped crab lets the inbox grow without bound."""
+    cmd = crab_hooks.COMMAND
+    assert f"-mmin +{crab_hooks.HOOK_GC_AGE_MINUTES}" in cmd
+    assert "-delete" in cmd
+
+
+def test_sweep_runs_before_the_marker():
+    """Anything after the marker is inside a shell comment and never runs, so
+    a sweep appended there would be silently dead."""
+    cmd = crab_hooks.COMMAND
+    assert cmd.index("find") < cmd.index(crab_hooks.MARKER)
+
+
+def test_sweep_is_sampled_not_unconditional():
+    """A find on every tool call would put the cost of the sweep in the hot
+    path; `case` is a builtin, so the unsampled writes fork nothing extra."""
+    cmd = crab_hooks.COMMAND
+    assert f'case "$f" in {crab_hooks.HOOK_GC_SAMPLE})' in cmd
+    assert cmd.count("find") == 1
+    assert cmd.index("case") < cmd.index("find") < cmd.index("esac")
+
+
+def test_sweep_only_touches_files_in_the_inbox():
+    """-maxdepth 1 and -type f keep the sweep off the directory itself and out
+    of anything below it."""
+    cmd = crab_hooks.COMMAND
+    assert "-maxdepth 1" in cmd
+    assert "-type f" in cmd
+    assert 'find "$d"' in cmd
+
+
+def test_write_still_happens_before_any_sweep():
+    """The event is the point; the sweep is housekeeping and must never be able
+    to preempt it."""
+    cmd = crab_hooks.COMMAND
+    assert cmd.index("mv ") < cmd.index("case")
+
+
 def test_command_is_shell_safe_and_marked():
     assert crab_hooks.COMMAND.rstrip().endswith(crab_hooks.MARKER)
     # The marker must be a comment, not an argument, or every hook invocation

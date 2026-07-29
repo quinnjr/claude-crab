@@ -63,10 +63,22 @@ purely to run `gen_sprites.py` at build time, and is cleaned out of the result.
 `--socket=wayland` is granted but X11 is not: layer-shell is a Wayland protocol
 with no X11 equivalent, so the fallback path is of no use inside a sandbox.
 
-Still to do before a Flathub submission: swap the `dir` source for a tagged
-`git` source, add screenshots to the metainfo, and decide whether the desktop
-file should keep `NoDisplay=true` — Flathub expects a launchable entry, but a
-menu item for a background service is its own kind of wrong.
+`packaging/flathub/dev.quinnjr.claude-crab.yml` is the submission manifest: it
+is identical except that the `claude-crab` module builds from the tagged
+release, pinned to both tag and commit, rather than from the working tree.
+
+The desktop file keeps `NoDisplay=true`: this is a background companion with no
+window, so a launcher entry would either do nothing visible or start a second
+crab. Flathub's linter treats that as an error and grants exceptions for
+background services, so the submission needs one requested.
+
+`packaging/flathub/README.md` covers that and the remaining blockers — chiefly
+metainfo screenshots — along with how to run both halves of the linter.
+
+Note that the Flatpak asks for no access to Claude Code's `settings.json`. Hook
+entries are arbitrary shell commands, so write access to that file amounts to
+unsandboxed code execution on the host. Flatpak users install hooks host-side
+with `claude-crab-hooks`; the crab itself only reads events.
 
 The unit's `ExecStart` and install location are both derived from the prefix.
 systemd searches a fixed set of directories for user units and
@@ -198,11 +210,20 @@ truncated payload loses only the error blip.
 `truncate` is used rather than `head -c`, which would close the pipe early and
 hand the writing process an EPIPE for every oversized payload.
 
-**Per directory.** On startup and once a minute the crab drops events older than
-`inboxMaxAgeMinutes` — a session state from an hour ago says nothing about now —
-and then drops the oldest until the directory is under `inboxMaxMegabytes`.
-Abandoned `.tmp` files from a hook killed mid-write are swept the same way.
-Anything dropped is logged; the crab never discards events silently.
+**Per directory, while the crab runs.** On startup and once a minute it drops
+events older than `inboxMaxAgeMinutes` — a session state from an hour ago says
+nothing about now — and then drops the oldest until the directory is under
+`inboxMaxMegabytes`. Abandoned `.tmp` files from a hook killed mid-write are
+swept the same way. Anything dropped is logged; the crab never discards events
+silently.
+
+**Per directory, while it does not.** The hooks fire whether or not the crab is
+running, so the crab cannot be the only thing that cleans up: stop the service,
+or uninstall it without removing the hooks, and the inbox would grow forever.
+The hook therefore carries its own sweep, sampled on the last digit of the
+timestamp so it runs about one write in ten and its cost stays out of the hot
+path. It is a backstop pinned to the default age limit, not the policy —
+`inboxMaxAgeMinutes` governs the crab, and the two only differ if you change it.
 
 Installer backups are bounded too: the newest five are kept per settings file.
 
@@ -236,7 +257,8 @@ and falls back rather than failing to start.
 
 ### Sprite variants
 
-`sprite` selects the look: `"default"`, or `"fancy"` for a top hat and monocle.
+`sprite` selects the look: `"default"`, `"fancy"` for a top hat and monocle, or
+`"party"` for a birthday hat.
 `--sprite <variant>` overrides the config file for one run, which is the quick
 way to compare them. An unknown value on the command line is a hard error —
 there it is a typo worth surfacing, whereas in a config file it should not stop
@@ -252,6 +274,10 @@ so switching costs nothing at runtime.
 time; the PNG is not checked in, so art and manifest cannot drift apart. The
 manifest is the contract — a hand-drawn replacement sheet needs no QML change so
 long as the row/frame layout matches.
+
+Three variants are emitted — plain, `fancy` (top hat and monocle) and `party`
+(birthday hat) — sharing one manifest, since they differ only in what is drawn
+inside a frame.
 
 The character is drawn as flat terracotta `#D06A4B` blocks on a coarse grid,
 with no outline and no shading: a 12x8 cell body — torso, two square eyes, a nub

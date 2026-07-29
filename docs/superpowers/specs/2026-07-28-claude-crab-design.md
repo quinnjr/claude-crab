@@ -50,7 +50,8 @@ A single `QQuickWindow` promoted to a `wlr-layer-shell` surface:
 - Height: configurable, default 72px
 - Own exclusive zone: `0` (does not push other windows)
 - Respects others' exclusive zones, so it sits *above* the panel rather than behind it
-- `Qt::WindowTransparentForInput` — empty input region, clicks pass through
+- Input confined to the character's rectangle by a window mask, so the rest of
+  the strip passes clicks through while the character stays right-clickable
 - `keyboardInteractivity: None`
 - Transparent clear colour
 
@@ -69,11 +70,15 @@ The hook command is pure coreutils, to avoid interpreter or binary startup cost 
 every single tool call:
 
 ```sh
-tee ~/.local/state/claude-crab/inbox/$(date +%s%N).json >/dev/null
+d="${XDG_STATE_HOME:-$HOME/.local/state}/claude-crab/inbox"; mkdir -p "$d"
+f="$d/$(date +%s%N)"
+cat > "$f.tmp" && truncate -s "<16384" "$f.tmp" && mv "$f.tmp" "$f.json"
 ```
 
-It writes the raw hook payload verbatim. `SessionTracker` parses `session_id` and
-`hook_event_name` itself, then unlinks the file.
+It writes the raw hook payload, capped and renamed into place atomically.
+`SessionTracker` parses `session_id` and `hook_event_name` itself, then unlinks
+the file. The cap is safe because Claude Code emits every field the crab needs
+ahead of `tool_input`, and truncated payloads are salvaged by scanning.
 
 **Why one file per event rather than a shared append-only log:** `PreToolUse` payloads
 embed `tool_input`, which for an `Edit` or `Write` routinely exceeds `PIPE_BUF`.
@@ -105,16 +110,17 @@ blinks, the lean on a fast gait) are named as such. Rotation snaps to quarter
 turns, because nearest-neighbour rotation at an arbitrary angle shreds a blocky
 sprite into loose pixels.
 
-**Variants.** Two sheets are emitted from the same pose code:
+**Variants.** Three sheets are emitted from the same pose code:
 
 | Variant | File | Look |
 | --- | --- | --- |
 | `default` | `spritesheet.png` | the plain character |
 | `fancy` | `spritesheet-fancy.png` | top hat and monocle |
+| `party` | `spritesheet-party.png` | birthday hat |
 
 They share a single manifest, because they differ only in what is drawn inside a
-frame, never in the layout. Both are compiled into the binary; the variant is
-chosen at startup and costs nothing at runtime.
+frame, never in the layout. All three are compiled into the binary; the variant
+is chosen at startup or from the right-click menu and costs nothing at runtime.
 
 Manifest schema:
 
@@ -306,7 +312,7 @@ A systemd `--user` unit, `WantedBy=graphical-session.target`.
 | `crabScale` | `1.0` | Sprite scale multiplier |
 | `output` | first screen | Connector name, e.g. `DP-1` |
 | `sleepCorner` | `"right"` | `"left"` or `"right"` |
-| `sprite` | `"default"` | `"default"` or `"fancy"` (top hat and monocle) |
+| `sprite` | `"default"` | `"default"`, `"fancy"` (top hat and monocle), or `"party"` (birthday hat) |
 | `menuHeadroom` | `220` | Transparent space above the strip for the right-click menu |
 | `inboxMaxAgeMinutes` | `60` | Events older than this are pruned |
 | `inboxMaxMegabytes` | `32` | Inbox byte budget, oldest dropped first |

@@ -3,3 +3,5 @@
 __pycache__/
 /build-flatpak/
 /.flatpak-builder/
+/build-flathub/
+/fhrepo/
