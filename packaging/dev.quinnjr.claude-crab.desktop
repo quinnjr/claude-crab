@@ -2,10 +2,21 @@
 Type=Application
 Name=Claude Crab
 GenericName=Claude Code activity companion
-Comment=A crab that walks above your panel while Claude Code works
+Comment=Clawd walks above your panel while Claude Code works
 Exec=claude-crab
 Icon=dev.quinnjr.claude-crab
 Categories=Utility;
 Terminal=false
+
+# Deliberately hidden from menus. This is a background companion with no window
+# and no UI beyond the character itself, so there is nothing for a launcher to
+# show: clicking it would either do nothing visible, because it is already
+# running, or start a second crab alongside the first.
+#
+# The entry is still required -- it carries the icon, and the AppStream
+# component points its <launchable> at it.
 NoDisplay=true
+
+# Phase 2 (after the desktop shell) when this file is used as an autostart
+# entry, so the panel exists before the crab tries to sit above it.
 X-KDE-autostart-phase=2

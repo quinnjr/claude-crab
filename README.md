@@ -67,10 +67,18 @@ with no X11 equivalent, so the fallback path is of no use inside a sandbox.
 is identical except that the `claude-crab` module builds from the tagged
 release, pinned to both tag and commit, rather than from the working tree.
 
-Still to do before submitting: add screenshots to the metainfo, and decide
-whether the desktop file should keep `NoDisplay=true` — Flathub expects a
-launchable entry, but a menu item for a background service is its own kind of
-wrong.
+The desktop file keeps `NoDisplay=true`: this is a background companion with no
+window, so a launcher entry would either do nothing visible or start a second
+crab. Flathub's linter treats that as an error and grants exceptions for
+background services, so the submission needs one requested.
+
+`packaging/flathub/README.md` covers that and the remaining blockers — chiefly
+metainfo screenshots — along with how to run both halves of the linter.
+
+Note that the Flatpak asks for no access to Claude Code's `settings.json`. Hook
+entries are arbitrary shell commands, so write access to that file amounts to
+unsandboxed code execution on the host. Flatpak users install hooks host-side
+with `claude-crab-hooks`; the crab itself only reads events.
 
 The unit's `ExecStart` and install location are both derived from the prefix.
 systemd searches a fixed set of directories for user units and

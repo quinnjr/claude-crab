@@ -20,9 +20,11 @@ sdk: org.kde.Sdk
 command: claude-crab
 
 finish-args:
-  # Layer-shell is a Wayland protocol; there is no X11 equivalent, so the X11
-  # fallback path is deliberately not given a socket here.
+  # Layer-shell is Wayland-only. fallback-x11 is granted anyway so the app still
+  # starts in an X11 session, where it degrades to the always-on-top frameless
+  # window rather than failing to launch.
   - --socket=wayland
+  - --socket=fallback-x11
   - --share=ipc
   - --device=dri
 
@@ -32,10 +34,12 @@ finish-args:
   # $CLAUDE_CRAB_STATE_DIR.
   - --filesystem=~/.local/state/claude-crab:create
 
-  # claude-crab-hooks edits Claude Code's settings.json. Both layouts are
-  # covered: a plain ~/.claude, and claude-profiles' per-profile directories.
-  - --filesystem=~/.claude
-  - --filesystem=xdg-data/claude-profiles
+  # No access to Claude Code's settings.json is requested, and none should be.
+  # Hook entries are arbitrary shell commands, so write access to that file is
+  # equivalent to unsandboxed code execution on the host -- far too much to hand
+  # a desktop toy. Flatpak users install the hooks host-side with
+  # claude-crab-hooks from the repository; the crab itself only ever reads
+  # events out of the inbox.
 
 cleanup:
   - /include
