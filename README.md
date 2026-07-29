@@ -26,12 +26,29 @@ above the panel rather than behind it.
 ## Build
 
 ```sh
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=~/.local
 cmake --build build
 ctest --test-dir build --output-on-failure
+cmake --install build
 ```
 
-An Arch `PKGBUILD` is in `packaging/`.
+That installs `claude-crab`, `claude-crab-hooks`, the `.desktop` file, and a
+systemd user unit. An Arch `PKGBUILD` for a system-wide install is in
+`packaging/`.
+
+The unit's `ExecStart` and install location are both derived from the prefix.
+systemd searches a fixed set of directories for user units and
+`<prefix>/lib/systemd/user` is not among them when the prefix is inside `$HOME`,
+so a `$HOME` prefix installs to `<prefix>/share/systemd/user` instead. Override
+with `-DSYSTEMD_USER_UNIT_DIR=...` if your layout differs.
+
+## Run it as a service
+
+```sh
+systemctl --user enable --now claude-crab
+systemctl --user status claude-crab
+journalctl --user -u claude-crab -f
+```
 
 ## Install the hooks
 
@@ -65,12 +82,12 @@ file.
 ./build/claude-crab --replay fixtures/session.jsonl
 ```
 
-`systemctl --user enable --now claude-crab` once installed.
-
 ### Seeing the logs
 
-Qt routes logging to the journal when it detects a systemd session, so a bare
-run looks silent. Force it to stderr:
+Under the service, everything lands in the journal — `journalctl --user -u
+claude-crab`. Qt does this whenever it detects a systemd session, which is also
+why running the binary straight from a terminal looks silent. Force it to
+stderr:
 
 ```sh
 QT_FORCE_STDERR_LOGGING=1 QT_LOGGING_RULES='claude.crab=true' ./build/claude-crab

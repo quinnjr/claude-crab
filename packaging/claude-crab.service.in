@@ -1,11 +1,12 @@
 [Unit]
-Description=A crab that walks above your panel while Claude Code works
+Description=Clawd walking above your panel while Claude Code works
+Documentation=https://github.com/quinnjr/claude-crab
 PartOf=graphical-session.target
 After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/claude-crab
+ExecStart=@CLAUDE_CRAB_BINARY@
 Restart=on-failure
 RestartSec=5
 Slice=session.slice

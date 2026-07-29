@@ -111,11 +111,26 @@ endif()
 
 # --- install ----------------------------------------------------------------
 
+set(CLAUDE_CRAB_BINARY ${CMAKE_INSTALL_FULL_BINDIR}/claude-crab)
+configure_file(packaging/claude-crab.service.in
+               ${CMAKE_CURRENT_BINARY_DIR}/claude-crab.service @ONLY)
+
+# systemd only searches a fixed set of directories for user units, and
+# <prefix>/lib/systemd/user is not among them for a prefix inside $HOME. Pick
+# the right one rather than installing somewhere systemd will never look.
+if(NOT DEFINED SYSTEMD_USER_UNIT_DIR)
+    if(CMAKE_INSTALL_PREFIX MATCHES "^$ENV{HOME}")
+        set(SYSTEMD_USER_UNIT_DIR ${CMAKE_INSTALL_DATADIR}/systemd/user)
+    else()
+        set(SYSTEMD_USER_UNIT_DIR ${CMAKE_INSTALL_LIBDIR}/systemd/user)
+    endif()
+endif()
+
 install(TARGETS claude-crab RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(PROGRAMS tools/crab_hooks.py
         DESTINATION ${CMAKE_INSTALL_BINDIR}
         RENAME claude-crab-hooks)
-install(FILES packaging/claude-crab.service
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/user)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/claude-crab.service
+        DESTINATION ${SYSTEMD_USER_UNIT_DIR})
 install(FILES packaging/dev.quinnjr.claude-crab.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
