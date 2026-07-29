@@ -5,3 +5,6 @@ __pycache__/
 /.flatpak-builder/
 /build-flathub/
 /fhrepo/
+/*.flatpak
+/.bundle-repo/
+/.bundle-build/

@@ -37,6 +37,20 @@ systemd user unit. An Arch `PKGBUILD` for a system-wide install is in `packaging
 
 ## Flatpak
 
+Every release carries a single-file bundle, which is how the Flatpak build
+reaches anyone given Flathub does not accept AI-assisted applications:
+
+```sh
+flatpak install --user ./claude-crab-1.1.1.flatpak
+```
+
+The bundle records Flathub as its runtime repository, so a machine without
+`org.kde.Platform` is offered it rather than failing on an unresolved
+dependency. Build one yourself with `tools/build-bundle.sh`; a tag push builds
+and attaches it automatically.
+
+To build from source instead:
+
 ```sh
 flatpak install --user flathub org.kde.Platform//6.9 org.kde.Sdk//6.9
 flatpak-builder --user --force-clean --install \
