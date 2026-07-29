@@ -3,8 +3,8 @@
 **Date:** 2026-07-28
 **Status:** Approved
 
-A pixel-art crab that walks in a strip just above the KDE Plasma panel, animating to
-reflect what Claude Code is currently doing.
+Clawd walks in a strip just above the KDE Plasma panel, animating to reflect what
+Claude Code is currently doing.
 
 ## Goals
 
@@ -84,10 +84,31 @@ Each is independently understandable and testable.
 
 ### 1. `tools/gen_sprites.py`
 
-Renders `assets/spritesheet.png` and `assets/manifest.json` from code. Pillow only.
+Renders the sprite sheets and `assets/manifest.json` from code. Pillow only.
 
-Sheet layout: 64×64 frames, one animation per row, frames left-to-right.
-Palette: terracotta `#D97757` body, cream `#F0EEE6` highlights, dark `#3D3929` outline.
+The character is drawn the way the Claude Code mascot is drawn: flat terracotta
+blocks on a coarse grid, no outline and no shading. A 12×8 cell body — torso, two
+square eyes, a nub on each side, four stubby legs — on a 16×16 cell canvas at 4px
+per cell, giving 64×64 frames, one animation per row.
+
+Palette: body `#D06A4B`, eyes `#2B2A26`, monocle `#F0EEE6`.
+
+Poses are expressed in grid cells rather than pixels; drawing off-grid is what
+makes a blocky sprite look wrong. The few things that move by pixels (hops,
+blinks, the lean on a fast gait) are named as such. Rotation snaps to quarter
+turns, because nearest-neighbour rotation at an arbitrary angle shreds a blocky
+sprite into loose pixels.
+
+**Variants.** Two sheets are emitted from the same pose code:
+
+| Variant | File | Look |
+| --- | --- | --- |
+| `default` | `spritesheet.png` | the plain character |
+| `fancy` | `spritesheet-fancy.png` | top hat and monocle |
+
+They share a single manifest, because they differ only in what is drawn inside a
+frame, never in the layout. Both are compiled into the binary; the variant is
+chosen at startup and costs nothing at runtime.
 
 Manifest schema:
 
@@ -96,22 +117,23 @@ Manifest schema:
   "frameWidth": 64,
   "frameHeight": 64,
   "animations": [
-    { "name": "sleep",     "row": 0, "frames": 4,  "fps": 4,  "loop": true },
-    { "name": "walk",      "row": 1, "frames": 8,  "fps": 12, "loop": true },
-    { "name": "scuttle",   "row": 2, "frames": 8,  "fps": 20, "loop": true },
-    { "name": "creep",     "row": 3, "frames": 8,  "fps": 6,  "loop": true },
-    { "name": "think",     "row": 4, "frames": 6,  "fps": 6,  "loop": true },
-    { "name": "wave",      "row": 5, "frames": 6,  "fps": 10, "loop": true },
-    { "name": "celebrate", "row": 6, "frames": 8,  "fps": 14, "loop": false },
+    { "name": "sleep",     "row": 0, "frames": 4,  "fps": 3,  "loop": true },
+    { "name": "walk",      "row": 1, "frames": 8,  "fps": 10, "loop": true },
+    { "name": "scuttle",   "row": 2, "frames": 8,  "fps": 18, "loop": true },
+    { "name": "creep",     "row": 3, "frames": 8,  "fps": 5,  "loop": true },
+    { "name": "think",     "row": 4, "frames": 6,  "fps": 5,  "loop": true },
+    { "name": "wave",      "row": 5, "frames": 6,  "fps": 8,  "loop": true },
+    { "name": "celebrate", "row": 6, "frames": 8,  "fps": 12, "loop": false },
     { "name": "tumble",    "row": 7, "frames": 10, "fps": 12, "loop": false }
   ]
 }
 ```
 
-The manifest is the contract between art and code. Replacing the PNG with
+The manifest is the contract between art and code. Replacing a PNG with
 hand-drawn art requires no QML change so long as the layout matches.
 
-The crab is drawn facing right; leftward movement mirrors horizontally in QML.
+The character is drawn facing right; leftward movement mirrors horizontally in
+QML, which also keeps the monocle on the leading eye.
 
 ### 2. `src/SessionTracker.{h,cpp}`
 
@@ -150,8 +172,12 @@ Exposed to QML as properties: `aggregateState`, `currentTool`, and signals
 
 ### 3. `src/main.cpp`
 
-Layer-shell configuration, output selection, config loading, QML engine setup, and
-the `--demo` / `--replay` CLI modes.
+Layer-shell configuration, output selection, config loading, manifest loading, QML
+engine setup, and the `--demo` / `--replay` / `--sprite` CLI options.
+
+The manifest is parsed here rather than fetched from QML: it is a build artefact
+compiled into the executable, so a failure is a packaging bug that must be
+reported loudly, not swallowed by an async callback that may never fire.
 
 ### 4. `qml/Crab.qml`
 
@@ -171,7 +197,7 @@ State → behaviour:
 | `Working`, tool `Bash` | `scuttle` |
 | `Working`, tool `Edit`/`Write`/`NotebookEdit` | `creep` |
 | `Working`, tool `Read`/`Grep`/`Glob` | `walk` |
-| `Working`, no tool | stop moving, `think` |
+| `Working`, no tool | stop moving, `think` — planted, eyes drifting |
 | `Working`, any other tool | `walk` |
 | `WaitingInput` | stop, face viewer, `wave` on loop |
 | `finished()` | `celebrate` once, then transition to `Idle` |
