@@ -94,5 +94,5 @@ modules:
       # commit is what makes the build reproducible if the tag ever moves.
       - type: git
         url: https://github.com/quinnjr/claude-crab.git
-        tag: v1.0.0
-        commit: 933c21618a47298284be399e93e13a8aecca0286
+        tag: v1.1.0
+        commit: 42f0cd3c3f33e2d984b8751ec9ef86aeedba9292

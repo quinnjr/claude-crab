@@ -5,6 +5,33 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] — 2026-07-29
+
+### Added
+
+- README instructions for installing the hooks from inside the Flatpak,
+  including that `flatpak run` passes the environment through — so a
+  `CLAUDE_CONFIG_DIR` exported by the launching shell outranks the default
+  unless `--unset-env` is passed.
+
+### Changed
+
+- **Behaviour change.** `claude-crab-hooks` now defaults to `~/.claude`, the one location every Claude
+  Code install has. Previously a bare invocation discovered and patched every
+  profile under `$XDG_DATA_HOME/claude-profiles/`; it no longer does.
+  `$CLAUDE_HOME` and `$CLAUDE_CONFIG_DIR` still take precedence when set, and
+  multi-profile setups opt in with `--all` or `--profile`.
+
+### Fixed
+
+- `claude-crab-hooks` reported every hook as missing when it could not read the
+  config directory at all — indistinguishable from a clean install, and exactly
+  what happens inside a Flatpak without the matching `--filesystem` grant. It
+  now fails with an actionable message naming the path.
+- Profile discovery honoured the sandbox's redirected `XDG_DATA_HOME` inside a
+  Flatpak, resolving to an empty path and reporting phantom profiles.
+- An unwritable target produced a traceback instead of an error.
+
 ## [1.1.0] — 2026-07-29
 
 ### Added
@@ -68,5 +95,6 @@ First release.
   write to the host's. `CrabConfig::inboxDir()` accounts for this;
   `$CLAUDE_CRAB_STATE_DIR` overrides it.
 
+[1.1.1]: https://github.com/quinnjr/claude-crab/releases/tag/v1.1.1
 [1.1.0]: https://github.com/quinnjr/claude-crab/releases/tag/v1.1.0
 [1.0.0]: https://github.com/quinnjr/claude-crab/releases/tag/v1.0.0

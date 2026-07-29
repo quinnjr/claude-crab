@@ -64,6 +64,15 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.1.1" date="2026-07-29">
+      <description>
+        <p>
+          Documents installing the hooks from inside the Flatpak, and fixes the
+          hook installer silently reporting no hooks when it cannot read the
+          configuration directory at all.
+        </p>
+      </description>
+    </release>
     <release version="1.1.0" date="2026-07-29">
       <description>
         <p>
