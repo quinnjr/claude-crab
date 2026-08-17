@@ -1,7 +1,7 @@
 # claude-crab
 
-Clawd walks in a strip just above your KDE Plasma panel, animating to reflect
-what Claude Code is doing.
+Clawd walks in a strip just above your panel, animating to reflect what Claude
+Code is doing. Linux, macOS and Windows.
 
 Idle, it sleeps in a corner. When a session starts working it walks; the gait
 changes with the tool in use. When Claude needs your input it stops, turns to
@@ -9,31 +9,51 @@ face you, and waves.
 
 ## What it is
 
-A standalone Qt6/QML application, **not a plasmoid**. `layer-shell-qt` exposes no
-QML import, so a C++ entry point is required to configure the layer surface.
-Running outside `plasmashell` also means a crash here can't take your panel down.
+A standalone Rust binary, **not a plasmoid**. Drawing is done with
+[`skia-rs`](https://crates.io/crates/skia-rs), a pure-Rust reimplementation of
+Skia, so nothing here links Qt, KDE or any C++ toolkit. Running as its own
+process also means a crash can't take your panel down.
 
-The window is a transparent, click-through `wlr-layer-shell` surface anchored to
-the bottom edge, with `exclusiveZone = 0` so the compositor places it directly
-above the panel rather than behind it.
+There are two window backends, chosen at startup:
+
+| Backend | Where | How it looks |
+| --- | --- | --- |
+| `layer-shell` | Sway, Hyprland, KWin, Wayfire, River | A transparent full-width `wlr-layer-shell` surface anchored to the bottom edge, `exclusiveZone = 0` so the compositor places it directly above the panel. Input is confined to the character, so the rest of the strip stays click-through. |
+| `floating` | macOS, Windows, X11, GNOME | A small always-on-top window that *is* the crab and moves with it. Nothing outside the character is covered, so no click-through trickery is needed. |
+
+Set `CLAUDE_CRAB_BACKEND=floating` (or `layer-shell`) to override the choice.
+
+Two caveats on the floating backend. Wayland gives clients no way to position
+their own windows, so under GNOME the crab animates in place rather than walking
+— it says so in the log. And neither Windows nor macOS exposes a work area to
+`winit`, so if the taskbar or Dock covers the crab, lift it with `bottomMargin`
+in the config.
 
 ## Requirements
 
-- KDE Plasma 6 on Wayland (there is an X11 fallback, but it is a degraded path)
-- Qt 6.6+, `layer-shell-qt`
+- Linux (Wayland or X11), macOS, or Windows
+- A GPU with Vulkan, Metal or DX12 — only the `floating` backend needs this
 - Python 3 with Pillow, at build time only, to generate the sprite sheet
 
 ## Build
 
 ```sh
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=~/.local
-cmake --build build
-ctest --test-dir build --output-on-failure
-cmake --install build
+cargo build --release
+cargo test
 ```
 
-That installs `claude-crab`, `claude-crab-hooks`, the `.desktop` file, and a
-systemd user unit. An Arch `PKGBUILD` for a system-wide install is in `packaging/`.
+Then install `target/release/claude-crab` and `tools/crab_hooks.py` (as
+`claude-crab-hooks`) somewhere on `PATH`. An Arch `PKGBUILD` that also installs
+the `.desktop` file, icons and a systemd user unit is in `packaging/`.
+
+### Vendored dependency
+
+`vendor/skia-rs-codec` is a `[patch.crates-io]` copy of the upstream crate with
+`webp` dropped from its default features. Upstream pulls `libwebp-sys`, a C
+library, which defeats a pure-Rust stack and breaks cross-compilation; Cargo
+features are additive and nothing in the chain sets `default-features = false`,
+so patching is the only way to drop it downstream. The app only ever decodes its
+own PNG sheets. The proper fix belongs upstream.
 
 ## Flatpak
 
@@ -69,7 +89,7 @@ exists, and the manifest binds the host directory through at the same path.
 `$CLAUDE_CRAB_STATE_DIR` overrides both, which is what a host with a
 non-default `XDG_STATE_HOME` needs.
 
-**Pinned dependencies.** `layer-shell-qt` is not in `org.kde.Platform`, so the
+**Pinned dependencies.** Historically `layer-shell-qt` was not in `org.kde.Platform`, so the
 manifest builds it — pinned to 6.5.5, because the 6.6 series onward needs Qt
 6.10 while `org.kde.Sdk//6.9` carries Qt 6.9.3. Pillow is vendored as a wheel
 purely to run `gen_sprites.py` at build time, and is cleaned out of the result.
@@ -211,17 +231,16 @@ why running the binary straight from a terminal looks silent. Force it to
 stderr:
 
 ```sh
-QT_FORCE_STDERR_LOGGING=1 QT_LOGGING_RULES='claude.crab=true' ./build/claude-crab
+RUST_LOG=debug ./target/release/claude-crab
 ```
 
-Without the `.desktop` file installed you will also see a harmless
-`org.freedesktop.portal.Error.Failed` line about the app id; `cmake --install`
-puts the file in place and it goes away.
+Startup logs the backend it picked, the inbox it is watching and the font it
+found for the menu, which between them explain most "nothing happens" reports.
 
 ## How the signal gets here
 
 ```
-claude session ──hook──▶ inbox/<ns>.json ──watcher──▶ SessionTracker ──signal──▶ CrabBrain
+claude session ──hook──▶ inbox/<ns>.json ──poll──▶ SessionTracker ──▶ Brain ──▶ Renderer
 ```
 
 The hook command is pure coreutils, so there is no interpreter or binary startup
@@ -349,7 +368,7 @@ so switching costs nothing at runtime.
 
 `tools/gen_sprites.py` generates `spritesheet.png` and `manifest.json` at build
 time; the PNG is not checked in, so art and manifest cannot drift apart. The
-manifest is the contract — a hand-drawn replacement sheet needs no QML change so
+manifest is the contract — a hand-drawn replacement sheet needs no code change so
 long as the row/frame layout matches.
 
 Three variants are emitted — plain, `fancy` (top hat and monocle) and `party`
