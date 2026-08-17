@@ -17,6 +17,9 @@ Terminal=false
 # component points its <launchable> at it.
 NoDisplay=true
 
-# Phase 2 (after the desktop shell) when this file is used as an autostart
-# entry, so the panel exists before the crab tries to sit above it.
+# Autostart ordering. X-KDE-autostart-phase is Plasma-specific and ignored
+# elsewhere; it asks for phase 2, after the shell, so the panel exists before
+# the crab tries to sit above it. Other desktops get the same effect from the
+# systemd user unit's After=graphical-session.target.
 X-KDE-autostart-phase=2
+X-GNOME-Autostart-Phase=Applications
