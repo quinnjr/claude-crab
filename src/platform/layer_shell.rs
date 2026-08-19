@@ -2,14 +2,17 @@
 //
 // The wlr-layer-shell backend.
 //
-// The window is a bottom-anchored, full-width strip on the Top layer with a
-// -1 exclusive zone: it reserves nothing and ignores the panel's reservation,
-// so it hugs the true bottom edge of the screen and the crab walks over the
-// panel rather than hovering above it.
+// The window is a full-screen surface on the Top layer with a -1 exclusive
+// zone: it reserves nothing and ignores the panel's reservation, so the
+// walking band hugs the true bottom edge of the screen and the crab walks
+// over the panel rather than hovering above it. Covering the whole screen
+// rather than just a bottom strip is what lets a drag drop the crab at any
+// coordinate; the input region keeps everything but the character itself
+// click-through, so the rest of the surface is inert.
 //
-// The surface is taller than the walking band. The extra space is menu
-// headroom: the right-click menu is painted into it rather than being a real
-// popup, because an xdg_popup parented to a layer surface is far more fragile.
+// The space above the walking band also serves as menu headroom: the
+// right-click menu is painted into it rather than being a real popup, because
+// an xdg_popup parented to a layer surface is far more fragile.
 
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState, FrameCallbackData},
@@ -152,7 +155,7 @@ impl App {
             output.as_ref(),
         );
 
-        layer.set_anchor(Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+        layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
         // -1: ignore exclusive zones entirely. A zero zone would make the
         // compositor lift the strip above the panel's reservation, leaving the
         // panel itself a dead band the crab could never walk across. The strip
@@ -161,7 +164,9 @@ impl App {
         // click-through.
         layer.set_exclusive_zone(-1);
         layer.set_keyboard_interactivity(KeyboardInteractivity::None);
-        layer.set_size(0, self.core.logical_strip_height() as u32);
+        // Zero in both axes: anchored to all four edges, the compositor hands
+        // us the full output.
+        layer.set_size(0, 0);
         layer.commit();
 
         self.layer = Some(layer);
@@ -393,7 +398,8 @@ impl LayerShellHandler for App {
             log::warn!("compositor left the width to us; assuming {width}");
         }
         if height == 0 {
-            height = self.core.logical_strip_height() as u32;
+            height = 1080;
+            log::warn!("compositor left the height to us; assuming {height}");
         }
         if width == self.width && height == self.height {
             return;
