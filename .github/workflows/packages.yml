@@ -120,13 +120,14 @@ jobs:
       - name: Build
         run: cargo build --release --locked
 
-      # Inno Setup 6 is preinstalled on the Windows runners.
+      # Inno Setup 6 is preinstalled on the Windows runners. PowerShell rather
+      # than bash: Git-bash's MSYS path conversion mangles the /D and /O
+      # switches into Windows paths before ISCC sees them.
       - name: Make the installer
-        shell: bash
+        shell: pwsh
         run: |
-          version=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" \
-            "/DMyAppVersion=$version" /Odist packaging/windows/claude-crab.iss
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.*)"').Matches[0].Groups[1].Value
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" /Odist packaging\windows\claude-crab.iss
 
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/')
