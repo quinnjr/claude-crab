@@ -285,7 +285,9 @@ coordinate on the screen — the layer-shell surface covers the whole output,
 with input confined to the character — and it resumes roaming from wherever it
 is dropped, keeping that height until dragged again. **Pin** disables dragging
 — the crab carries on roaming but ignores the left button — and **Unpin**
-makes it draggable again. (The floating backend's window only spans the bottom
+makes it draggable again. Pinning saves the crab's height to the config file
+(in logical pixels, clamped to the screen on use), so a pinned crab comes back
+at the same height after a restart. (The floating backend's window only spans the bottom
 strip, so drags there stay within it.)
 
 The window is not globally click-through. Input is confined to the character's

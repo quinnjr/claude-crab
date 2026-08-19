@@ -29,11 +29,11 @@ if [[ ${1:-} == --pinned ]]; then
     manifest=packaging/flathub/${APP_ID}.yml
 fi
 
-# Version comes from CMakeLists so the bundle can never disagree with the
+# Version comes from Cargo.toml so the bundle can never disagree with the
 # binary inside it.
-version=$(sed -n 's/^project(claude-crab VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+version=$(sed -n 's/^version = "\([0-9.]*\)"/\1/p' Cargo.toml | head -1)
 if [[ -z $version ]]; then
-    echo "error: could not read the version out of CMakeLists.txt" >&2
+    echo "error: could not read the version out of Cargo.toml" >&2
     exit 1
 fi
 

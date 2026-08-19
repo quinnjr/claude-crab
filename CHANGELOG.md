@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Pinning saves the crab's height as `pinnedLift` (logical pixels above the
+  strip floor), so a pinned crab comes back at the same height after a
+  restart. The height is clamped to the screen on use.
+
+### Fixed
+
+- The release-bundle workflow failed on the v2.0.0 tag: the Flatpak manifest
+  references `packaging/cargo-sources.json` for offline crate fetching, but
+  the file was never generated and committed. It is now checked in
+  (regenerate with `flatpak-cargo-generator.py Cargo.lock -o
+  packaging/cargo-sources.json` whenever `Cargo.lock` changes).
+- `tools/build-bundle.sh` still read the bundle version out of the deleted
+  `CMakeLists.txt`; it now reads `Cargo.toml`.
+
 ## [2.0.0] — 2026-08-19
 
 ### Changed
