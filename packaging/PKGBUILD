@@ -1,6 +1,6 @@
 # Maintainer: Joseph R. Quinn <quinn.josephr@proton.me>
 pkgname=claude-crab
-pkgver=2.0.0
+pkgver=2.0.1
 pkgrel=1
 pkgdesc="A crab that walks above your panel while Claude Code works"
 arch=('x86_64')

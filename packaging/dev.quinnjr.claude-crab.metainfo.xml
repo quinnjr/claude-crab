@@ -64,6 +64,14 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="2.0.1" date="2026-08-19">
+      <description>
+        <p>
+          Pinning now remembers the crab's height across restarts, and the
+          release Flatpak bundle builds again.
+        </p>
+      </description>
+    </release>
     <release version="2.0.0" date="2026-08-19">
       <description>
         <p>

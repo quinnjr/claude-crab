@@ -153,6 +153,11 @@ impl Core {
         self.brain.height = (self.config.strip_height as f32 * scale).max(1.0);
         self.brain.crab_scale = self.config.crab_scale as f32 * scale;
         self.brain.headroom = self.strip_top();
+        if self.config.lock_position {
+            // Re-derived from the config on every geometry change: the saved
+            // height is logical, and a smaller screen must keep the crab on it.
+            self.brain.lift = self.config.pinned_lift as f32 * scale;
+        }
         // A smaller screen must keep a lifted crab on it.
         self.brain.lift = self.brain.lift.clamp(0.0, self.brain.max_lift());
         self.force_redraw = true;
@@ -433,12 +438,13 @@ impl Core {
         self.brain.pinned = locked;
         self.menu.locked = locked;
         self.config.lock_position = locked;
+        self.config.pinned_lift = f64::from(self.brain.lift / self.scale);
         self.end_drag();
 
         // Persisted immediately, like the sprite choice: this runs as a
         // background service, so a lock that vanished on the next restart
         // would read as the toggle not working.
-        if !CrabConfig::save_lock(&self.config_path, locked) {
+        if !CrabConfig::save_lock(&self.config_path, locked, self.config.pinned_lift) {
             log::warn!(
                 "lock toggled but could not be saved to {} - it will revert on restart",
                 self.config_path.display()
@@ -756,6 +762,7 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         c.config_path = path.clone();
         c.brain.x = 250.0;
+        c.brain.lift = 40.0;
 
         c.menu.open_at(400.0, c.strip_top());
         let row = c.menu.row_rect(800.0, Menu::lock_index());
@@ -767,6 +774,7 @@ mod tests {
         assert!(!c.menu.is_open());
         let saved = CrabConfig::load(&path);
         assert!(saved.lock_position, "the lock must persist");
+        assert_eq!(saved.pinned_lift, 40.0, "at scale 1, logical lift is device lift");
 
         c.menu.open_at(400.0, c.strip_top());
         c.pointer_moved(row.x as f32 + 5.0, row.y as f32 + 5.0);
@@ -777,9 +785,10 @@ mod tests {
     }
 
     #[test]
-    fn a_locked_config_starts_the_crab_pinned() {
+    fn a_locked_config_starts_the_crab_pinned_at_its_height() {
         let mut config = CrabConfig::default();
         config.lock_position = true;
+        config.pinned_lift = 100.0;
         let brain = Brain::new(
             Manifest::embedded().unwrap(),
             1.0,
@@ -797,6 +806,13 @@ mod tests {
         c.set_geometry(800, 292, 1.0);
         assert!(c.brain.pinned);
         assert!(c.menu.locked);
+        assert_eq!(c.brain.lift, 100.0, "the saved height comes back");
+
+        // A saved height above a smaller screen clamps to keep the crab on it.
+        c.config.pinned_lift = 5000.0;
+        c.set_geometry(800, 292, 1.0);
+        c.set_geometry(400, 200, 1.0);
+        assert_eq!(c.brain.lift, c.brain.max_lift());
     }
 
     #[test]
