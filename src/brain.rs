@@ -41,6 +41,11 @@ pub struct Brain {
     /// +1 walking right, -1 walking left.
     pub direction: i32,
 
+    /// Locked in place by the user: no patrolling, no walking to the corner.
+    pub pinned: bool,
+    /// Mid-drag: the pointer owns the position until the button is released.
+    pub held: bool,
+
     /// The animation currently on screen, and where it is in its frame list.
     current: String,
     frame: usize,
@@ -63,6 +68,8 @@ impl Brain {
             reaction: None,
             x: 0.0,
             direction: 1,
+            pinned: false,
+            held: false,
             current: String::new(),
             frame: 0,
             frame_accum: 0.0,
@@ -154,7 +161,9 @@ impl Brain {
             }
             State::Working => self.gait_for_tool(&self.tool),
             State::Idle => {
-                if self.at_corner() {
+                // A pinned crab cannot reach the corner, so it sleeps where it
+                // stands rather than miming a walk it will never take.
+                if self.pinned || self.at_corner() {
                     "sleep"
                 } else {
                     "walk"
@@ -191,6 +200,11 @@ impl Brain {
     }
 
     fn step_position(&mut self, dt: f32) {
+        // Locked or grabbed: the user owns the position, animations play in
+        // place.
+        if self.pinned || self.held {
+            return;
+        }
         // Reactions play in place.
         if self.reaction.is_some() {
             return;
@@ -309,6 +323,44 @@ mod tests {
         b.width = 800.0;
         b.height = 72.0;
         b
+    }
+
+    #[test]
+    fn a_pinned_brain_does_not_patrol() {
+        let mut b = brain();
+        b.session_state = State::Working;
+        b.tool = "Bash".to_string();
+        b.x = 100.0;
+        b.pinned = true;
+        for _ in 0..60 {
+            b.tick(1.0 / 60.0);
+        }
+        assert_eq!(b.x, 100.0, "a pinned crab must stay where it was locked");
+    }
+
+    #[test]
+    fn a_pinned_idle_brain_sleeps_where_it_stands() {
+        let mut b = brain();
+        b.session_state = State::Idle;
+        b.x = 100.0; // nowhere near the right-hand sleeping corner
+        b.pinned = true;
+        b.tick(0.1);
+        assert_eq!(b.x, 100.0, "must not walk to the corner");
+        assert_eq!(b.base_animation(), "sleep", "an idle pinned crab sleeps in place");
+    }
+
+    #[test]
+    fn a_held_brain_stays_put_until_released() {
+        let mut b = brain();
+        b.session_state = State::Working;
+        b.tool = "Bash".to_string();
+        b.x = 100.0;
+        b.held = true;
+        b.tick(0.1);
+        assert_eq!(b.x, 100.0, "a grabbed crab must not walk out of the hand");
+        b.held = false;
+        b.tick(0.1);
+        assert_ne!(b.x, 100.0, "release should resume the patrol");
     }
 
     #[test]

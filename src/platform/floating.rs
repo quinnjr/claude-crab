@@ -157,12 +157,16 @@ impl ApplicationHandler for FloatingApp {
             }
             WindowEvent::CursorLeft { .. } => self.core.pointer_left(),
 
-            WindowEvent::MouseInput { state: ElementState::Pressed, button, .. } => {
-                self.core.pointer_pressed(match button {
+            WindowEvent::MouseInput { state, button, .. } => {
+                let button = match button {
                     MouseButton::Left => Button::Left,
                     MouseButton::Right => Button::Right,
                     _ => Button::Other,
-                });
+                };
+                match state {
+                    ElementState::Pressed => self.core.pointer_pressed(button),
+                    ElementState::Released => self.core.pointer_released(button),
+                }
             }
 
             WindowEvent::RedrawRequested => self.draw(),
@@ -374,8 +378,10 @@ impl Gpu {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            // The Skia surface is premultiplied BGRA, so the texture is too.
-            format: wgpu::TextureFormat::Bgra8Unorm,
+            // The Skia surface's pixels() are physically RGBA (see
+            // make_surface), so the texture matches; the swapchain stays
+            // Bgra8Unorm and the blit converts in the sampler.
+            format: wgpu::TextureFormat::Rgba8Unorm,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });

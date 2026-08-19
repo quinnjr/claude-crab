@@ -90,6 +90,9 @@ pub struct Core {
 
     /// Pointer position in strip-space device pixels.
     pointer_pos: (f32, f32),
+    /// While a left-drag is in progress, how far into the crab the press
+    /// landed, so the sprite does not snap its left edge to the pointer.
+    drag_offset: Option<f32>,
 }
 
 impl Core {
@@ -102,11 +105,15 @@ impl Core {
         layout: Layout,
     ) -> Self {
         let now = Instant::now();
+        let mut brain = brain;
+        brain.pinned = config.lock_position;
+        let mut menu = Menu::new();
+        menu.locked = config.lock_position;
         Self {
             config,
             config_path,
             brain,
-            menu: Menu::new(),
+            menu,
             tracker,
             mode,
             renderer: None,
@@ -121,6 +128,7 @@ impl Core {
             last_surface: IRect::EMPTY,
             force_redraw: true,
             pointer_pos: (0.0, 0.0),
+            drag_offset: None,
         }
     }
 
@@ -143,6 +151,12 @@ impl Core {
         self.brain.width = width as f32;
         self.brain.height = (self.config.strip_height as f32 * scale).max(1.0);
         self.brain.crab_scale = self.config.crab_scale as f32 * scale;
+        if self.config.lock_position {
+            // Re-derived from the config on every geometry change: the saved
+            // position is logical, and a smaller screen must keep the crab on
+            // it rather than pinned somewhere past the edge.
+            self.brain.x = (self.config.locked_x as f32 * scale).clamp(0.0, self.brain.max_x());
+        }
         self.force_redraw = true;
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.set_scale(scale);
@@ -342,11 +356,30 @@ impl Core {
 
     pub fn pointer_moved(&mut self, x: f32, y: f32) {
         self.pointer_pos = (x, y);
+        if let Some(offset) = self.drag_offset {
+            self.brain.x = (x - offset).clamp(0.0, self.brain.max_x());
+            return;
+        }
         self.menu.pointer_moved(self.strip_width as f32, x, y, Instant::now());
     }
 
     pub fn pointer_left(&mut self) {
+        // A grab normally outlives a Leave, but the floating backend can lose
+        // the pointer mid-drag; dropping the crab is better than a stuck grab.
+        self.end_drag();
         self.menu.pointer_left(Instant::now());
+    }
+
+    pub fn pointer_released(&mut self, button: Button) {
+        if button == Button::Left {
+            self.end_drag();
+        }
+    }
+
+    fn end_drag(&mut self) {
+        if self.drag_offset.take().is_some() {
+            self.brain.held = false;
+        }
     }
 
     pub fn pointer_pressed(&mut self, button: Button) {
@@ -357,8 +390,12 @@ impl Core {
             if matches!(button, Button::Left | Button::Right)
                 && let Some(index) = self.menu.hit_test(width, x, y)
             {
-                let variant = SPRITE_VARIANTS[index];
-                self.set_variant(variant);
+                if index == Menu::lock_index() {
+                    self.toggle_lock();
+                } else {
+                    let variant = SPRITE_VARIANTS[index];
+                    self.set_variant(variant);
+                }
                 self.menu.close();
                 return;
             }
@@ -369,13 +406,40 @@ impl Core {
             return;
         }
 
-        if button != Button::Right {
+        if !self.crab_rect().contains(x, y) {
             return;
         }
-        if self.crab_rect().contains(x, y) {
-            // Anchored to the crab's centre, opening upward into the headroom.
-            let r = self.brain.crab_rect();
-            self.menu.open_at(r.x + r.width / 2.0, self.strip_top());
+        match button {
+            Button::Right => {
+                // Anchored to the crab's centre, opening upward into the headroom.
+                let r = self.brain.crab_rect();
+                self.menu.open_at(r.x + r.width / 2.0, self.strip_top());
+            }
+            Button::Left if !self.brain.pinned => {
+                self.drag_offset = Some(x - self.brain.x);
+                self.brain.held = true;
+            }
+            _ => {}
+        }
+    }
+
+    /// Pin the crab where it stands, or set it roaming again.
+    fn toggle_lock(&mut self) {
+        let locked = !self.brain.pinned;
+        self.brain.pinned = locked;
+        self.menu.locked = locked;
+        self.config.lock_position = locked;
+        self.config.locked_x = f64::from(self.brain.x / self.scale);
+        self.end_drag();
+
+        // Persisted immediately, like the sprite choice: this runs as a
+        // background service, so a lock that vanished on the next restart
+        // would read as the toggle not working.
+        if !CrabConfig::save_lock(&self.config_path, locked, self.config.locked_x) {
+            log::warn!(
+                "lock toggled but could not be saved to {} - it will revert on restart",
+                self.config_path.display()
+            );
         }
     }
 
@@ -574,6 +638,113 @@ mod tests {
         assert!(!c.menu.is_open());
         assert_eq!(CrabConfig::load(&path).sprite, "fancy", "the choice must persist");
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn dragging_moves_the_crab_and_release_resumes_the_patrol() {
+        let mut c = core(Layout::FullStrip);
+        c.brain.session_state = State::Working;
+        c.brain.tool = "Bash".to_string();
+        c.brain.x = 100.0;
+
+        let r = c.crab_rect();
+        c.pointer_moved(r.x as f32 + 10.0, r.y as f32 + 10.0);
+        c.pointer_pressed(Button::Left);
+        c.pointer_moved(300.0, r.y as f32 + 10.0);
+        // The grab offset holds: the crab's left edge trails the pointer by
+        // the 10px the press landed inside it.
+        assert!((c.brain.x - 290.0).abs() < 0.5, "got {}", c.brain.x);
+
+        // Grabbed: the patrol must not fight the hand.
+        c.brain.tick(0.1);
+        assert!((c.brain.x - 290.0).abs() < 0.5, "moved while held: {}", c.brain.x);
+
+        c.pointer_released(Button::Left);
+        c.brain.tick(0.1);
+        assert!((c.brain.x - 290.0).abs() > 0.5, "release should resume the patrol");
+    }
+
+    #[test]
+    fn a_drag_never_leaves_the_strip() {
+        let mut c = core(Layout::FullStrip);
+        c.brain.x = 100.0;
+        let r = c.crab_rect();
+        c.pointer_moved(r.x as f32 + 10.0, r.y as f32 + 10.0);
+        c.pointer_pressed(Button::Left);
+        c.pointer_moved(-500.0, r.y as f32 + 10.0);
+        assert_eq!(c.brain.x, 0.0);
+        c.pointer_moved(5000.0, r.y as f32 + 10.0);
+        assert_eq!(c.brain.x, c.brain.max_x());
+    }
+
+    #[test]
+    fn a_pinned_crab_cannot_be_dragged() {
+        let mut c = core(Layout::FullStrip);
+        c.brain.x = 100.0;
+        c.brain.pinned = true;
+        let r = c.crab_rect();
+        c.pointer_moved(r.x as f32 + 10.0, r.y as f32 + 10.0);
+        c.pointer_pressed(Button::Left);
+        c.pointer_moved(300.0, r.y as f32 + 10.0);
+        assert_eq!(c.brain.x, 100.0, "a locked crab must ignore the drag");
+    }
+
+    #[test]
+    fn the_lock_row_toggles_and_persists() {
+        let mut c = core(Layout::FullStrip);
+        let path = std::env::temp_dir().join(format!("crab-lock-{}.json", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        c.config_path = path.clone();
+        c.brain.x = 250.0;
+
+        c.menu.open_at(400.0, c.strip_top());
+        let row = c.menu.row_rect(800.0, Menu::lock_index());
+        c.pointer_moved(row.x as f32 + 5.0, row.y as f32 + 5.0);
+        c.pointer_pressed(Button::Left);
+
+        assert!(c.brain.pinned, "the lock row should pin the crab");
+        assert!(c.menu.locked);
+        assert!(!c.menu.is_open());
+        let saved = CrabConfig::load(&path);
+        assert!(saved.lock_position, "the lock must persist");
+        assert_eq!(saved.locked_x, 250.0, "at scale 1, logical x is strip x");
+
+        c.menu.open_at(400.0, c.strip_top());
+        c.pointer_moved(row.x as f32 + 5.0, row.y as f32 + 5.0);
+        c.pointer_pressed(Button::Left);
+        assert!(!c.brain.pinned, "the same row unlocks");
+        assert!(!CrabConfig::load(&path).lock_position);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_locked_config_starts_the_crab_pinned_at_its_spot() {
+        let mut config = CrabConfig::default();
+        config.lock_position = true;
+        config.locked_x = 250.0;
+        let brain = Brain::new(
+            Manifest::embedded().unwrap(),
+            1.0,
+            config.sleep_corner.clone(),
+            config.reactions.clone(),
+        );
+        let mut c = Core::new(
+            config,
+            std::env::temp_dir().join("crab-lock-start.json"),
+            SessionTracker::new(PathBuf::from("/nonexistent-inbox")),
+            brain,
+            Mode::Live,
+            Layout::FullStrip,
+        );
+        c.set_geometry(800, 292, 1.0);
+        assert!(c.brain.pinned);
+        assert!(c.menu.locked);
+        assert_eq!(c.brain.x, 250.0);
+
+        // A saved position off the right edge of a smaller screen clamps.
+        c.config.locked_x = 5000.0;
+        c.set_geometry(400, 292, 1.0);
+        assert_eq!(c.brain.x, c.brain.max_x());
     }
 
     #[test]

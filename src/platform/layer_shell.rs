@@ -3,8 +3,9 @@
 // The wlr-layer-shell backend.
 //
 // The window is a bottom-anchored, full-width strip on the Top layer with a
-// zero exclusive zone: it reserves nothing itself but respects the panel's
-// reservation, so it lands directly above the panel rather than behind it.
+// -1 exclusive zone: it reserves nothing and ignores the panel's reservation,
+// so it hugs the true bottom edge of the screen and the crab walks over the
+// panel rather than hovering above it.
 //
 // The surface is taller than the walking band. The extra space is menu
 // headroom: the right-click menu is painted into it rather than being a real
@@ -152,9 +153,13 @@ impl App {
         );
 
         layer.set_anchor(Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
-        // Reserve nothing ourselves, but respect the panel's reservation so we
-        // land directly above it rather than behind it.
-        layer.set_exclusive_zone(0);
+        // -1: ignore exclusive zones entirely. A zero zone would make the
+        // compositor lift the strip above the panel's reservation, leaving the
+        // panel itself a dead band the crab could never walk across. The strip
+        // is created after the panel on the same layer, so it stacks above it,
+        // and the input region keeps everything but the character itself
+        // click-through.
+        layer.set_exclusive_zone(-1);
         layer.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer.set_size(0, self.core.logical_strip_height() as u32);
         layer.commit();
@@ -231,16 +236,21 @@ impl App {
         // slot each frame, and a partial copy into a slot holding a stale frame
         // would tear. At 4MB for a 4K strip this is well under a millisecond;
         // add per-slot damage tracking if it ever shows up in a profile.
+        //
+        // The renderer's pixels are physically RGBA (see make_surface), but
+        // wl_shm's ARGB8888 wants little-endian BGRA bytes, so the copy swaps
+        // R and B on the way through.
         let src = self.core.pixels();
         let src_stride = self.core.row_bytes();
         let dst_stride = stride as usize;
         if src_stride == dst_stride && src.len() >= canvas.len() {
-            canvas.copy_from_slice(&src[..canvas.len()]);
+            let len = canvas.len();
+            copy_rgba_to_bgra(&src[..len], canvas);
         } else {
             for row in 0..h as usize {
                 let (s, d) = (row * src_stride, row * dst_stride);
                 if s + dst_stride <= src.len() && d + dst_stride <= canvas.len() {
-                    canvas[d..d + dst_stride].copy_from_slice(&src[s..s + dst_stride]);
+                    copy_rgba_to_bgra(&src[s..s + dst_stride], &mut canvas[d..d + dst_stride]);
                 }
             }
         }
@@ -291,6 +301,16 @@ impl App {
         }
         layer.wl_surface().set_input_region(Some(&region));
         region.destroy();
+    }
+}
+
+/// Copy RGBA-ordered pixels into a little-endian ARGB8888 (BGRA-byte) canvas.
+fn copy_rgba_to_bgra(src: &[u8], dst: &mut [u8]) {
+    for (s, d) in src.chunks_exact(4).zip(dst.chunks_exact_mut(4)) {
+        d[0] = s[2];
+        d[1] = s[1];
+        d[2] = s[0];
+        d[3] = s[3];
     }
 }
 
@@ -450,7 +470,14 @@ impl PointerHandler for App {
                         _ => Button::Other,
                     });
                 }
-                PointerEventKind::Release { .. } | PointerEventKind::Axis { .. } => {}
+                PointerEventKind::Release { button, .. } => {
+                    self.core.pointer_released(match button {
+                        BTN_LEFT => Button::Left,
+                        BTN_RIGHT => Button::Right,
+                        _ => Button::Other,
+                    });
+                }
+                PointerEventKind::Axis { .. } => {}
             }
         }
     }
@@ -479,5 +506,20 @@ impl ProvidesRegistryState for App {
 }
 
 delegate_registry!(App);
+
+#[cfg(test)]
+mod tests {
+    use super::copy_rgba_to_bgra;
+
+    #[test]
+    fn the_copy_swaps_red_and_blue() {
+        // Terracotta in RGBA must land as BGRA in the shm buffer; alpha stays
+        // at byte 3 in both orders.
+        let src = [208u8, 106, 75, 255, 0, 0, 0, 0];
+        let mut dst = [0u8; 8];
+        copy_rgba_to_bgra(&src, &mut dst);
+        assert_eq!(dst, [75, 106, 208, 255, 0, 0, 0, 0]);
+    }
+}
 delegate_noop!(App: ignore wl_region::WlRegion);
 smithay_client_toolkit::delegate_dispatch2!(App);

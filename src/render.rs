@@ -301,30 +301,36 @@ impl Renderer {
             );
         }
         if let Some(font) = self.row_font.clone() {
-            for (i, variant) in SPRITE_VARIANTS.iter().enumerate() {
-                let Some(row) = rows.get(i) else { continue };
-                let is_current = *variant == current;
+            let scale = self.scale;
+            let surface = &mut self.surface;
+            let mut draw_row = |row: &IRect, label: &str, highlight: bool| {
                 let mut paint = Paint::new();
                 paint.set_anti_alias(true);
-                if is_current {
+                if highlight {
                     paint.set_argb(255, ROW_FG_CURRENT.0, ROW_FG_CURRENT.1, ROW_FG_CURRENT.2);
                 } else {
                     paint.set_argb(255, ROW_FG.0, ROW_FG.1, ROW_FG.2);
                 }
+                let baseline = row.y as f32 + row.height as f32 / 2.0 + 4.5 * scale;
+                let mut canvas = surface.canvas();
+                canvas.draw_string(label, row.x as f32 + 10.0 * scale, baseline, &font, &paint);
+            };
+
+            for (i, variant) in SPRITE_VARIANTS.iter().enumerate() {
+                let Some(row) = rows.get(i) else { continue };
+                let is_current = *variant == current;
                 let label = format!(
                     "{}{}",
                     if is_current { "\u{2713}  " } else { "   " },
                     label_for(variant)
                 );
-                let baseline = row.y as f32 + row.height as f32 / 2.0 + 4.5 * self.scale;
-                let mut canvas = self.surface.canvas();
-                canvas.draw_string(
-                    &label,
-                    row.x as f32 + 10.0 * self.scale,
-                    baseline,
-                    &font,
-                    &paint,
-                );
+                draw_row(row, &label, is_current);
+            }
+
+            if let Some(row) = rows.get(Menu::lock_index()) {
+                let label =
+                    if menu.locked { "\u{2713}  Lock position" } else { "   Lock position" };
+                draw_row(row, label, menu.locked);
             }
         }
 
@@ -336,7 +342,7 @@ impl Renderer {
         self.surface.pixels_mut().fill(0);
     }
 
-    /// Zero a rectangle. The surface is premultiplied BGRA, so all-zero bytes
+    /// Zero a rectangle. The surface is premultiplied RGBA, so all-zero bytes
     /// are fully transparent -- cheaper and more predictable than a Clear-mode
     /// draw.
     fn clear_rect(&mut self, rect: IRect) {
@@ -358,10 +364,13 @@ impl Renderer {
 }
 
 fn make_surface(width: i32, height: i32) -> Result<Surface, String> {
-    // BGRA explicitly rather than N32: wl_shm's ARGB8888 and softbuffer's
-    // 0RGB are both little-endian, so the bytes must land in BGRA order.
-    // ColorType::n32() is RGBA on Linux and would swap red and blue.
-    let info = ImageInfo::new(width.max(1), height.max(1), ColorType::Bgra8888, AlphaType::Premul)
+    // Declared RGBA because that is what Surface::pixels() actually returns:
+    // skia-rs backs every raster surface with a physically RGBA-ordered
+    // buffer, and a declared color type of Bgra8888 only changes the bytes of
+    // *snapshots*, never of pixels(). Each backend converts from RGBA to
+    // whatever its sink wants (wl_shm ARGB8888 swizzles, wgpu samples an
+    // Rgba8Unorm texture directly).
+    let info = ImageInfo::new(width.max(1), height.max(1), ColorType::Rgba8888, AlphaType::Premul)
         .map_err(|e| format!("bad surface info {width}x{height}: {e:?}"))?;
     let mut surface = Surface::new_raster(&info, None)
         .ok_or_else(|| format!("cannot allocate {width}x{height}"))?;
@@ -407,6 +416,26 @@ mod tests {
         b.tick(0.0);
         assert_eq!(r.render(&b, &Menu::new(), FULL).len(), 1);
         assert!(opaque_pixels(&r) > 100, "the crab should have drawn");
+    }
+
+    #[test]
+    fn pixels_are_rgba_ordered_terracotta() {
+        // The backends rely on pixels() being physically RGBA: the wl_shm path
+        // swizzles to BGRA itself and the wgpu path uploads to an Rgba8Unorm
+        // texture. If skia-rs ever starts honouring the declared color type in
+        // pixels(), the crab turns blue again -- this pins the byte order.
+        let mut r = renderer();
+        let mut b = brain();
+        b.x = 100.0;
+        b.tick(0.0);
+        r.render(&b, &Menu::new(), FULL);
+
+        let mut counts = std::collections::HashMap::new();
+        for px in r.pixels().chunks(4).filter(|px| px[3] == 255) {
+            *counts.entry([px[0], px[1], px[2], px[3]]).or_insert(0usize) += 1;
+        }
+        let body = counts.into_iter().max_by_key(|(_, n)| *n).map(|(px, _)| px);
+        assert_eq!(body, Some([208, 106, 75, 255]), "body should be terracotta, R first");
     }
 
     #[test]

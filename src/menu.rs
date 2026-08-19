@@ -36,6 +36,9 @@ pub struct Menu {
     /// Output scale. Every coordinate here is in device pixels, so the menu
     /// keeps its physical size on a HiDPI screen instead of shrinking.
     pub scale: f32,
+    /// Mirror of the lock state, so the renderer can draw the checkmark
+    /// without reaching back into the Core.
+    pub locked: bool,
 }
 
 impl Default for Menu {
@@ -54,6 +57,7 @@ impl Menu {
             left_at: None,
             dirty: false,
             scale: 1.0,
+            locked: false,
         }
     }
 
@@ -69,7 +73,13 @@ impl Menu {
         std::mem::take(&mut self.dirty)
     }
 
+    /// Sprite variants plus the lock-position toggle.
     pub fn item_count() -> usize {
+        SPRITE_VARIANTS.len() + 1
+    }
+
+    /// The row index of the lock-position toggle, the last row.
+    pub fn lock_index() -> usize {
         SPRITE_VARIANTS.len()
     }
 
@@ -181,6 +191,15 @@ mod tests {
         let mut m = Menu::new();
         m.open_at(x, y);
         m
+    }
+
+    #[test]
+    fn the_lock_row_sits_below_the_variants() {
+        assert_eq!(Menu::item_count(), SPRITE_VARIANTS.len() + 1);
+        let m = menu_at(500.0, 300.0);
+        let row = m.row_rect(1920.0, Menu::lock_index());
+        let centre = (row.x as f32 + row.width as f32 / 2.0, row.y as f32 + row.height as f32 / 2.0);
+        assert_eq!(m.hit_test(1920.0, centre.0, centre.1), Some(Menu::lock_index()));
     }
 
     #[test]

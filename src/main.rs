@@ -27,7 +27,7 @@ use crate::tracker::SessionTracker;
 #[command(
     name = "claude-crab",
     version,
-    about = "A crab that walks above your panel while Claude Code works."
+    about = "A crab that walks over your panel while Claude Code works."
 )]
 struct Args {
     /// Cycle every animation on a timer.

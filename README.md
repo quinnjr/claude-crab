@@ -1,6 +1,6 @@
 # claude-crab
 
-Clawd walks in a strip just above your panel, animating to reflect what Claude
+Clawd walks along the bottom of your screen, over the panel, animating to reflect what Claude
 Code is doing. Linux, macOS and Windows.
 
 Idle, it sleeps in a corner. When a session starts working it walks; the gait
@@ -18,7 +18,7 @@ There are two window backends, chosen at startup:
 
 | Backend | Where | How it looks |
 | --- | --- | --- |
-| `layer-shell` | Sway, Hyprland, KWin, Wayfire, River | A transparent full-width `wlr-layer-shell` surface anchored to the bottom edge, `exclusiveZone = 0` so the compositor places it directly above the panel. Input is confined to the character, so the rest of the strip stays click-through. |
+| `layer-shell` | Sway, Hyprland, KWin, Wayfire, River | A transparent full-width `wlr-layer-shell` surface anchored to the bottom edge, `exclusiveZone = -1` so it hugs the true bottom of the screen and the crab walks over the panel. Input is confined to the character, so the rest of the strip stays click-through. |
 | `floating` | macOS, Windows, X11, GNOME | A small always-on-top window that *is* the crab and moves with it. Nothing outside the character is covered, so no click-through trickery is needed. |
 
 Set `CLAUDE_CRAB_BACKEND=floating` (or `layer-shell`) to override the choice.
@@ -276,9 +276,16 @@ minutes (a `SIGKILL`ed session never sends `Stop` or `SessionEnd`).
 
 ## Right-click menu
 
-Right-clicking the character opens a menu for switching sprite variants. The
-choice is written to the config file straight away, so it survives the restarts
-a systemd-managed service makes routine.
+Right-clicking the character opens a menu for switching sprite variants and for
+locking its position. Every choice is written to the config file straight away,
+so it survives the restarts a systemd-managed service makes routine.
+
+Unlocked, the crab roams the strip and can be dragged anywhere along it with the
+left button; it resumes roaming from wherever it is dropped. **Lock position**
+pins it where it stands: it stops patrolling, sleeps in place instead of walking
+to its corner, and ignores drags until unlocked. The pinned spot is saved in
+logical pixels and clamped to the screen, so a smaller monitor keeps the crab
+visible rather than pinned past the edge.
 
 The window is not globally click-through. Input is confined to the character's
 own rectangle by a window mask that tracks it as it walks, so a right click on
@@ -334,6 +341,8 @@ Installer backups are bounded too: the newest five are kept per settings file.
   "output": "DP-1",
   "sleepCorner": "right",
   "sprite": "default",
+  "lockPosition": false,
+  "lockedX": 0,
   "menuHeadroom": 220,
   "staleTimeoutMinutes": 10,
   "inboxMaxAgeMinutes": 60,
