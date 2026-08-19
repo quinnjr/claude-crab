@@ -328,8 +328,7 @@ impl Renderer {
             }
 
             if let Some(row) = rows.get(Menu::lock_index()) {
-                let label =
-                    if menu.locked { "\u{2713}  Lock position" } else { "   Lock position" };
+                let label = if menu.locked { "Unpin" } else { "Pin" };
                 draw_row(row, label, menu.locked);
             }
         }

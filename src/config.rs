@@ -45,11 +45,8 @@ pub struct CrabConfig {
     pub bottom_margin: i32,
     /// Sprite variant: "default", "fancy" or "party".
     pub sprite: String,
-    /// The crab is pinned in place rather than roaming.
+    /// The crab is pinned: drags are ignored, though it roams as usual.
     pub lock_position: bool,
-    /// Where it is pinned, in logical pixels from the left edge of the strip.
-    /// Clamped to the strip on use, so a smaller screen keeps it visible.
-    pub locked_x: f64,
     pub stale_timeout_minutes: i32,
     /// Inbox budget. Hooks keep writing while the crab is stopped, so the
     /// directory needs an upper bound in both age and size.
@@ -69,7 +66,6 @@ impl Default for CrabConfig {
             bottom_margin: 0,
             sprite: "default".to_string(),
             lock_position: false,
-            locked_x: 0.0,
             stale_timeout_minutes: 10,
             inbox_max_age_minutes: 60,
             inbox_max_megabytes: 32,
@@ -194,9 +190,6 @@ impl CrabConfig {
         if let Some(v) = obj.get("lockPosition").and_then(Value::as_bool) {
             config.lock_position = v;
         }
-        if let Some(v) = obj.get("lockedX").and_then(Value::as_f64) {
-            config.locked_x = v;
-        }
         if let Some(v) = obj.get("staleTimeoutMinutes").and_then(as_i32) {
             config.stale_timeout_minutes = v;
         }
@@ -240,10 +233,6 @@ impl CrabConfig {
             );
             self.sprite = "default".to_string();
         }
-        if self.locked_x < 0.0 || !self.locked_x.is_finite() {
-            log::warn!("lockedX must be a non-negative number; using 0");
-            self.locked_x = 0.0;
-        }
         if self.bottom_margin < 0 {
             log::warn!("bottomMargin cannot be negative; using 0");
             self.bottom_margin = 0;
@@ -274,15 +263,9 @@ impl CrabConfig {
         Self::save_keys(path, &[("sprite", Value::String(variant.to_string()))])
     }
 
-    /// Persist the lock toggle and the position it pinned, in logical pixels.
-    pub fn save_lock(path: &Path, locked: bool, x: f64) -> bool {
-        Self::save_keys(
-            path,
-            &[
-                ("lockPosition", Value::Bool(locked)),
-                ("lockedX", serde_json::json!(x)),
-            ],
-        )
+    /// Persist the pin toggle.
+    pub fn save_lock(path: &Path, locked: bool) -> bool {
+        Self::save_keys(path, &[("lockPosition", Value::Bool(locked))])
     }
 
     /// Rewrite the given keys at `path`, preserving every other key.
@@ -371,17 +354,13 @@ mod tests {
     }
 
     #[test]
-    fn lock_keys_load_and_a_negative_x_is_clamped() {
+    fn the_lock_key_loads_and_defaults_to_off() {
         let dir = tmpdir("lock-load");
-        let path = write(&dir, r#"{"lockPosition": true, "lockedX": 240.5}"#);
-        let config = CrabConfig::load(&path);
-        assert!(config.lock_position);
-        assert_eq!(config.locked_x, 240.5);
+        let path = write(&dir, r#"{"lockPosition": true}"#);
+        assert!(CrabConfig::load(&path).lock_position);
 
-        let path = write(&dir, r#"{"lockedX": -10}"#);
-        let config = CrabConfig::load(&path);
-        assert!(!config.lock_position, "lock defaults to off");
-        assert_eq!(config.locked_x, 0.0, "a negative position clamps to the left edge");
+        let path = write(&dir, r#"{}"#);
+        assert!(!CrabConfig::load(&path).lock_position, "lock defaults to off");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -389,17 +368,16 @@ mod tests {
     fn save_lock_persists_and_preserves_other_keys() {
         let dir = tmpdir("lock-save");
         let path = write(&dir, r#"{"sprite": "party", "userKey": 7}"#);
-        assert!(CrabConfig::save_lock(&path, true, 123.0));
+        assert!(CrabConfig::save_lock(&path, true));
 
         let config = CrabConfig::load(&path);
         assert!(config.lock_position);
-        assert_eq!(config.locked_x, 123.0);
         assert_eq!(config.sprite, "party", "unrelated keys must survive");
 
         let raw: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(raw.get("userKey").and_then(Value::as_i64), Some(7));
 
-        assert!(CrabConfig::save_lock(&path, false, 123.0));
+        assert!(CrabConfig::save_lock(&path, false));
         assert!(!CrabConfig::load(&path).lock_position);
         let _ = std::fs::remove_dir_all(&dir);
     }
