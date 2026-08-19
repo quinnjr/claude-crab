@@ -46,6 +46,27 @@ Then install `target/release/claude-crab` and `tools/crab_hooks.py` (as
 `claude-crab-hooks`) somewhere on `PATH`. An Arch `PKGBUILD` that also installs
 the `.desktop` file, icons and a systemd user unit is in `packaging/`.
 
+## Packages
+
+Every release carries prebuilt packages, built by `.github/workflows/packages.yml`:
+
+- **Debian/Ubuntu**: `claude-crab_<version>_amd64.deb` — `apt install ./claude-crab_*.deb`
+- **Fedora/openSUSE**: `claude-crab-<version>.x86_64.rpm` — `dnf install ./claude-crab-*.rpm`
+- **macOS**: `claude-crab-<version>-macos.dmg` — a universal (arm64 + x86_64)
+  app bundle. It is ad-hoc signed but not notarized, so the first launch needs
+  right-click → Open.
+- **Windows**: `claude-crab-<version>-setup.exe` — an installer with an
+  optional start-at-sign-in task.
+
+To rebuild the .deb and .rpm locally:
+
+```sh
+cargo build --release
+bash packaging/stage-icons.sh
+cargo deb --no-build      # target/debian/
+cargo generate-rpm        # target/generate-rpm/
+```
+
 ### Vendored dependency
 
 `vendor/skia-rs-codec` is a `[patch.crates-io]` copy of the upstream crate with

@@ -30,6 +30,55 @@ pollster = "1"
 smithay-client-toolkit = "0.21"
 wayland-client = "0.31"
 
+# Debian package (cargo-deb). Icons are generated into a hashed OUT_DIR, so
+# packaging/stage-icons.sh must copy them to target/pkg-icons before
+# `cargo deb --no-build` runs. Dependencies are listed by hand because both
+# Vulkan and the Wayland socket are reached at runtime, not link time.
+[package.metadata.deb]
+maintainer = "Joseph R. Quinn <quinn.josephr@proton.me>"
+copyright = "2026, Joseph R. Quinn"
+section = "utils"
+priority = "optional"
+depends = "libvulkan1, fontconfig"
+extended-description = """\
+A desktop pet crab that walks along the top of your panel while Claude Code \
+works, driven by Claude Code hook events. Uses a Wayland layer-shell surface \
+where available and a floating window everywhere else."""
+assets = [
+  ["target/release/claude-crab", "usr/bin/", "755"],
+  ["tools/crab_hooks.py", "usr/bin/claude-crab-hooks", "755"],
+  ["packaging/claude-crab.service", "usr/lib/systemd/user/", "644"],
+  ["packaging/dev.quinnjr.claude-crab.desktop", "usr/share/applications/", "644"],
+  ["packaging/dev.quinnjr.claude-crab.metainfo.xml", "usr/share/metainfo/", "644"],
+  ["target/pkg-icons/32.png", "usr/share/icons/hicolor/32x32/apps/dev.quinnjr.claude-crab.png", "644"],
+  ["target/pkg-icons/48.png", "usr/share/icons/hicolor/48x48/apps/dev.quinnjr.claude-crab.png", "644"],
+  ["target/pkg-icons/64.png", "usr/share/icons/hicolor/64x64/apps/dev.quinnjr.claude-crab.png", "644"],
+  ["target/pkg-icons/128.png", "usr/share/icons/hicolor/128x128/apps/dev.quinnjr.claude-crab.png", "644"],
+  ["target/pkg-icons/256.png", "usr/share/icons/hicolor/256x256/apps/dev.quinnjr.claude-crab.png", "644"],
+]
+
+# RPM package (cargo-generate-rpm). Same staging requirement as the deb.
+# auto-req is disabled for the same reason the deb dependencies are manual.
+[package.metadata.generate-rpm]
+auto-req = "no"
+assets = [
+  { source = "target/release/claude-crab", dest = "/usr/bin/claude-crab", mode = "755" },
+  { source = "tools/crab_hooks.py", dest = "/usr/bin/claude-crab-hooks", mode = "755" },
+  { source = "packaging/claude-crab.service", dest = "/usr/lib/systemd/user/claude-crab.service", mode = "644" },
+  { source = "packaging/dev.quinnjr.claude-crab.desktop", dest = "/usr/share/applications/dev.quinnjr.claude-crab.desktop", mode = "644" },
+  { source = "packaging/dev.quinnjr.claude-crab.metainfo.xml", dest = "/usr/share/metainfo/dev.quinnjr.claude-crab.metainfo.xml", mode = "644" },
+  { source = "target/pkg-icons/32.png", dest = "/usr/share/icons/hicolor/32x32/apps/dev.quinnjr.claude-crab.png", mode = "644" },
+  { source = "target/pkg-icons/48.png", dest = "/usr/share/icons/hicolor/48x48/apps/dev.quinnjr.claude-crab.png", mode = "644" },
+  { source = "target/pkg-icons/64.png", dest = "/usr/share/icons/hicolor/64x64/apps/dev.quinnjr.claude-crab.png", mode = "644" },
+  { source = "target/pkg-icons/128.png", dest = "/usr/share/icons/hicolor/128x128/apps/dev.quinnjr.claude-crab.png", mode = "644" },
+  { source = "target/pkg-icons/256.png", dest = "/usr/share/icons/hicolor/256x256/apps/dev.quinnjr.claude-crab.png", mode = "644" },
+  { source = "LICENSE", dest = "/usr/share/licenses/claude-crab/LICENSE", mode = "644", doc = true },
+]
+
+[package.metadata.generate-rpm.requires]
+vulkan-loader = "*"
+fontconfig = "*"
+
 [profile.release]
 opt-level = 3
 lto = true
