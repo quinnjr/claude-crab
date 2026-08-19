@@ -151,12 +151,6 @@ impl Core {
         self.brain.width = width as f32;
         self.brain.height = (self.config.strip_height as f32 * scale).max(1.0);
         self.brain.crab_scale = self.config.crab_scale as f32 * scale;
-        if self.config.lock_position {
-            // Re-derived from the config on every geometry change: the saved
-            // position is logical, and a smaller screen must keep the crab on
-            // it rather than pinned somewhere past the edge.
-            self.brain.x = (self.config.locked_x as f32 * scale).clamp(0.0, self.brain.max_x());
-        }
         self.force_redraw = true;
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.set_scale(scale);
@@ -423,19 +417,18 @@ impl Core {
         }
     }
 
-    /// Pin the crab where it stands, or set it roaming again.
+    /// Pin the crab against drags, or make it draggable again.
     fn toggle_lock(&mut self) {
         let locked = !self.brain.pinned;
         self.brain.pinned = locked;
         self.menu.locked = locked;
         self.config.lock_position = locked;
-        self.config.locked_x = f64::from(self.brain.x / self.scale);
         self.end_drag();
 
         // Persisted immediately, like the sprite choice: this runs as a
         // background service, so a lock that vanished on the next restart
         // would read as the toggle not working.
-        if !CrabConfig::save_lock(&self.config_path, locked, self.config.locked_x) {
+        if !CrabConfig::save_lock(&self.config_path, locked) {
             log::warn!(
                 "lock toggled but could not be saved to {} - it will revert on restart",
                 self.config_path.display()
@@ -686,7 +679,7 @@ mod tests {
         c.pointer_moved(r.x as f32 + 10.0, r.y as f32 + 10.0);
         c.pointer_pressed(Button::Left);
         c.pointer_moved(300.0, r.y as f32 + 10.0);
-        assert_eq!(c.brain.x, 100.0, "a locked crab must ignore the drag");
+        assert_eq!(c.brain.x, 100.0, "a pinned crab must ignore the drag");
     }
 
     #[test]
@@ -707,7 +700,6 @@ mod tests {
         assert!(!c.menu.is_open());
         let saved = CrabConfig::load(&path);
         assert!(saved.lock_position, "the lock must persist");
-        assert_eq!(saved.locked_x, 250.0, "at scale 1, logical x is strip x");
 
         c.menu.open_at(400.0, c.strip_top());
         c.pointer_moved(row.x as f32 + 5.0, row.y as f32 + 5.0);
@@ -718,10 +710,9 @@ mod tests {
     }
 
     #[test]
-    fn a_locked_config_starts_the_crab_pinned_at_its_spot() {
+    fn a_locked_config_starts_the_crab_pinned() {
         let mut config = CrabConfig::default();
         config.lock_position = true;
-        config.locked_x = 250.0;
         let brain = Brain::new(
             Manifest::embedded().unwrap(),
             1.0,
@@ -739,12 +730,6 @@ mod tests {
         c.set_geometry(800, 292, 1.0);
         assert!(c.brain.pinned);
         assert!(c.menu.locked);
-        assert_eq!(c.brain.x, 250.0);
-
-        // A saved position off the right edge of a smaller screen clamps.
-        c.config.locked_x = 5000.0;
-        c.set_geometry(400, 292, 1.0);
-        assert_eq!(c.brain.x, c.brain.max_x());
     }
 
     #[test]

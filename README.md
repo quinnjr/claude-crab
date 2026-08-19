@@ -277,15 +277,13 @@ minutes (a `SIGKILL`ed session never sends `Stop` or `SessionEnd`).
 ## Right-click menu
 
 Right-clicking the character opens a menu for switching sprite variants and for
-locking its position. Every choice is written to the config file straight away,
-so it survives the restarts a systemd-managed service makes routine.
+pinning it. Every choice is written to the config file straight away, so it
+survives the restarts a systemd-managed service makes routine.
 
-Unlocked, the crab roams the strip and can be dragged anywhere along it with the
-left button; it resumes roaming from wherever it is dropped. **Lock position**
-pins it where it stands: it stops patrolling, sleeps in place instead of walking
-to its corner, and ignores drags until unlocked. The pinned spot is saved in
-logical pixels and clamped to the screen, so a smaller monitor keeps the crab
-visible rather than pinned past the edge.
+The crab always roams the strip. Unpinned, it can also be dragged anywhere
+along the strip with the left button and resumes roaming from wherever it is
+dropped. **Pin** disables dragging — the crab carries on roaming but ignores
+the left button — and **Unpin** makes it draggable again.
 
 The window is not globally click-through. Input is confined to the character's
 own rectangle by a window mask that tracks it as it walks, so a right click on

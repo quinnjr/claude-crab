@@ -41,7 +41,7 @@ pub struct Brain {
     /// +1 walking right, -1 walking left.
     pub direction: i32,
 
-    /// Locked in place by the user: no patrolling, no walking to the corner.
+    /// Pinned by the user: drags are ignored, but it roams as usual.
     pub pinned: bool,
     /// Mid-drag: the pointer owns the position until the button is released.
     pub held: bool,
@@ -161,9 +161,7 @@ impl Brain {
             }
             State::Working => self.gait_for_tool(&self.tool),
             State::Idle => {
-                // A pinned crab cannot reach the corner, so it sleeps where it
-                // stands rather than miming a walk it will never take.
-                if self.pinned || self.at_corner() {
+                if self.at_corner() {
                     "sleep"
                 } else {
                     "walk"
@@ -200,9 +198,8 @@ impl Brain {
     }
 
     fn step_position(&mut self, dt: f32) {
-        // Locked or grabbed: the user owns the position, animations play in
-        // place.
-        if self.pinned || self.held {
+        // Grabbed: the user owns the position, animations play in place.
+        if self.held {
             return;
         }
         // Reactions play in place.
@@ -326,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn a_pinned_brain_does_not_patrol() {
+    fn a_pinned_brain_still_patrols() {
         let mut b = brain();
         b.session_state = State::Working;
         b.tool = "Bash".to_string();
@@ -335,18 +332,18 @@ mod tests {
         for _ in 0..60 {
             b.tick(1.0 / 60.0);
         }
-        assert_eq!(b.x, 100.0, "a pinned crab must stay where it was locked");
+        assert_ne!(b.x, 100.0, "pinning blocks drags, not roaming");
     }
 
     #[test]
-    fn a_pinned_idle_brain_sleeps_where_it_stands() {
+    fn a_pinned_idle_brain_still_walks_to_its_corner() {
         let mut b = brain();
         b.session_state = State::Idle;
         b.x = 100.0; // nowhere near the right-hand sleeping corner
         b.pinned = true;
         b.tick(0.1);
-        assert_eq!(b.x, 100.0, "must not walk to the corner");
-        assert_eq!(b.base_animation(), "sleep", "an idle pinned crab sleeps in place");
+        assert!(b.x > 100.0, "must head for the corner even when pinned");
+        assert_eq!(b.base_animation(), "walk", "still walking, not asleep in place");
     }
 
     #[test]

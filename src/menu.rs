@@ -36,7 +36,7 @@ pub struct Menu {
     /// Output scale. Every coordinate here is in device pixels, so the menu
     /// keeps its physical size on a HiDPI screen instead of shrinking.
     pub scale: f32,
-    /// Mirror of the lock state, so the renderer can draw the checkmark
+    /// Mirror of the pin state, so the renderer can label the row Pin/Unpin
     /// without reaching back into the Core.
     pub locked: bool,
 }
@@ -73,12 +73,12 @@ impl Menu {
         std::mem::take(&mut self.dirty)
     }
 
-    /// Sprite variants plus the lock-position toggle.
+    /// Sprite variants plus the pin toggle.
     pub fn item_count() -> usize {
         SPRITE_VARIANTS.len() + 1
     }
 
-    /// The row index of the lock-position toggle, the last row.
+    /// The row index of the pin toggle, the last row.
     pub fn lock_index() -> usize {
         SPRITE_VARIANTS.len()
     }
