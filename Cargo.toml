@@ -39,7 +39,7 @@ maintainer = "Joseph R. Quinn <quinn.josephr@proton.me>"
 copyright = "2026, Joseph R. Quinn"
 section = "utils"
 priority = "optional"
-depends = "libvulkan1, fontconfig"
+depends = "libvulkan1, fontconfig, libxkbcommon0"
 extended-description = """\
 A desktop pet crab that walks along the top of your panel while Claude Code \
 works, driven by Claude Code hook events. Uses a Wayland layer-shell surface \
@@ -78,6 +78,7 @@ assets = [
 [package.metadata.generate-rpm.requires]
 vulkan-loader = "*"
 fontconfig = "*"
+libxkbcommon = "*"
 
 [profile.release]
 opt-level = 3

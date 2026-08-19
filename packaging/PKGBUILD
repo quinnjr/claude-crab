@@ -9,7 +9,7 @@ license=('MIT')
 # Rendering is pure Rust (skia-rs), so there is no Qt or KDE dependency any
 # more. wayland is needed by the layer-shell backend, and the floating backend
 # talks to the GPU through wgpu, which loads Vulkan at runtime.
-depends=('wayland' 'vulkan-icd-loader' 'fontconfig')
+depends=('wayland' 'vulkan-icd-loader' 'fontconfig' 'libxkbcommon')
 makedepends=('cargo' 'python' 'python-pillow')
 checkdepends=('python-pytest')
 source=("$pkgname-$pkgver.tar.gz")
