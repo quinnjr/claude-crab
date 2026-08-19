@@ -90,9 +90,10 @@ pub struct Core {
 
     /// Pointer position in strip-space device pixels.
     pointer_pos: (f32, f32),
-    /// While a left-drag is in progress, how far into the crab the press
-    /// landed, so the sprite does not snap its left edge to the pointer.
-    drag_offset: Option<f32>,
+    /// While a left-drag is in progress, how far into the crab (x) and below
+    /// its top (y, strip space) the press landed, so the sprite does not snap
+    /// its corner to the pointer.
+    drag_offset: Option<(f32, f32)>,
 }
 
 impl Core {
@@ -151,6 +152,9 @@ impl Core {
         self.brain.width = width as f32;
         self.brain.height = (self.config.strip_height as f32 * scale).max(1.0);
         self.brain.crab_scale = self.config.crab_scale as f32 * scale;
+        self.brain.headroom = self.strip_top();
+        // A smaller screen must keep a lifted crab on it.
+        self.brain.lift = self.brain.lift.clamp(0.0, self.brain.max_lift());
         self.force_redraw = true;
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.set_scale(scale);
@@ -350,8 +354,13 @@ impl Core {
 
     pub fn pointer_moved(&mut self, x: f32, y: f32) {
         self.pointer_pos = (x, y);
-        if let Some(offset) = self.drag_offset {
-            self.brain.x = (x - offset).clamp(0.0, self.brain.max_x());
+        if let Some((dx, dy)) = self.drag_offset {
+            self.brain.x = (x - dx).clamp(0.0, self.brain.max_x());
+            // The grabbed point follows the pointer vertically too: the crab's
+            // floor-level top minus its new top is the lift.
+            let h = self.brain.frame_height() * self.brain.crab_scale;
+            let floor_top = self.strip_top() + self.brain.height - h;
+            self.brain.lift = (floor_top - (y - dy)).clamp(0.0, self.brain.max_lift());
             return;
         }
         self.menu.pointer_moved(self.strip_width as f32, x, y, Instant::now());
@@ -410,7 +419,8 @@ impl Core {
                 self.menu.open_at(r.x + r.width / 2.0, self.strip_top());
             }
             Button::Left if !self.brain.pinned => {
-                self.drag_offset = Some(x - self.brain.x);
+                let top = self.strip_top() + self.brain.crab_rect().y;
+                self.drag_offset = Some((x - self.brain.x, y - top));
                 self.brain.held = true;
             }
             _ => {}
@@ -680,6 +690,63 @@ mod tests {
         c.pointer_pressed(Button::Left);
         c.pointer_moved(300.0, r.y as f32 + 10.0);
         assert_eq!(c.brain.x, 100.0, "a pinned crab must ignore the drag");
+    }
+
+    #[test]
+    fn a_vertical_drag_lifts_the_crab_and_it_stays_where_dropped() {
+        let mut c = core(Layout::FullStrip);
+        c.brain.session_state = State::Working;
+        c.brain.tool = "Bash".to_string();
+        let r = c.crab_rect();
+        c.pointer_moved(r.x as f32 + 10.0, r.y as f32 + 10.0);
+        c.pointer_pressed(Button::Left);
+        c.pointer_moved(r.x as f32 + 10.0, r.y as f32 + 10.0 - 50.0);
+        assert_eq!(c.brain.lift, 50.0, "the crab follows the pointer up");
+        c.pointer_released(Button::Left);
+        for _ in 0..10 {
+            c.brain.tick(0.1);
+        }
+        assert_eq!(c.brain.lift, 50.0, "it roams at the height it was dropped");
+        assert_ne!(c.brain.x, r.x as f32, "still patrolling horizontally");
+    }
+
+    #[test]
+    fn a_lifted_crab_cannot_leave_the_surface() {
+        let mut c = core(Layout::FullStrip);
+        let r = c.crab_rect();
+        c.pointer_moved(r.x as f32 + 10.0, r.y as f32 + 10.0);
+        c.pointer_pressed(Button::Left);
+        c.pointer_moved(r.x as f32 + 10.0, -500.0);
+        assert_eq!(c.brain.lift, c.brain.max_lift(), "clamped at the surface top");
+        assert!(c.crab_rect().y >= 0);
+        c.pointer_moved(r.x as f32 + 10.0, 5000.0);
+        assert_eq!(c.brain.lift, 0.0, "clamped at the floor");
+    }
+
+    #[test]
+    fn the_crab_can_be_dropped_anywhere_on_screen() {
+        let mut c = core(Layout::FullStrip);
+        // A full-screen surface, as the layer-shell backend now creates.
+        c.set_geometry(800, 600, 1.0);
+        let r = c.crab_rect();
+        c.pointer_moved(r.x as f32 + 10.0, r.y as f32 + 10.0);
+        c.pointer_pressed(Button::Left);
+        c.pointer_moved(400.0, 10.0);
+        c.pointer_released(Button::Left);
+        let dropped = c.crab_rect();
+        assert_eq!(dropped.y, 0, "the drag reaches the very top of the screen");
+        assert!(dropped.x > 300, "and lands at the pointer's x");
+    }
+
+    #[test]
+    fn a_pinned_crab_ignores_vertical_drags() {
+        let mut c = core(Layout::FullStrip);
+        c.brain.pinned = true;
+        let r = c.crab_rect();
+        c.pointer_moved(r.x as f32 + 10.0, r.y as f32 + 10.0);
+        c.pointer_pressed(Button::Left);
+        c.pointer_moved(r.x as f32 + 10.0, r.y as f32 - 100.0);
+        assert_eq!(c.brain.lift, 0.0, "pinned means no vertical drag either");
     }
 
     #[test]

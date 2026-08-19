@@ -280,10 +280,13 @@ Right-clicking the character opens a menu for switching sprite variants and for
 pinning it. Every choice is written to the config file straight away, so it
 survives the restarts a systemd-managed service makes routine.
 
-The crab always roams the strip. Unpinned, it can also be dragged anywhere
-along the strip with the left button and resumes roaming from wherever it is
-dropped. **Pin** disables dragging — the crab carries on roaming but ignores
-the left button — and **Unpin** makes it draggable again.
+The crab always roams. Unpinned, it can be dragged with the left button to any
+coordinate on the screen — the layer-shell surface covers the whole output,
+with input confined to the character — and it resumes roaming from wherever it
+is dropped, keeping that height until dragged again. **Pin** disables dragging
+— the crab carries on roaming but ignores the left button — and **Unpin**
+makes it draggable again. (The floating backend's window only spans the bottom
+strip, so drags there stay within it.)
 
 The window is not globally click-through. Input is confined to the character's
 own rectangle by a window mask that tracks it as it walks, so a right click on
@@ -395,3 +398,8 @@ arbitrary angle shreds a blocky sprite into loose pixels.
 ## Licence
 
 MIT.
+
+Clawd, the crab character depicted by the sprites, is a trademark of Anthropic,
+PBC. This project is not affiliated with, sponsored by, or endorsed by
+Anthropic; the MIT licence covers this project's code and generated art, not
+the Clawd character or the Claude and Anthropic names.

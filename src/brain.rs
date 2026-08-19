@@ -43,6 +43,12 @@ pub struct Brain {
 
     /// Pinned by the user: drags are ignored, but it roams as usual.
     pub pinned: bool,
+    /// Height above the strip floor the crab was dropped at, in device pixels.
+    /// It roams horizontally at this height until dragged again.
+    pub lift: f32,
+    /// Vertical room above the walking band (the menu headroom), in device
+    /// pixels. Bounds how far up a drag can carry the crab.
+    pub headroom: f32,
     /// Mid-drag: the pointer owns the position until the button is released.
     pub held: bool,
 
@@ -69,6 +75,8 @@ impl Brain {
             x: 0.0,
             direction: 1,
             pinned: false,
+            lift: 0.0,
+            headroom: 0.0,
             held: false,
             current: String::new(),
             frame: 0,
@@ -91,6 +99,11 @@ impl Brain {
     /// was a visual transform applied on top of the item's layout width.
     pub fn max_x(&self) -> f32 {
         (self.width - self.frame_width()).max(0.0)
+    }
+
+    /// The highest lift that keeps the crab fully on the surface.
+    pub fn max_lift(&self) -> f32 {
+        (self.headroom + self.height - self.frame_height() * self.crab_scale).max(0.0)
     }
 
     pub fn corner_x(&self) -> f32 {
@@ -188,7 +201,7 @@ impl Brain {
     pub fn crab_rect(&self) -> Rect {
         let w = self.frame_width() * self.crab_scale;
         let h = self.frame_height() * self.crab_scale;
-        Rect { x: self.x, y: self.height - h, width: w, height: h }
+        Rect { x: self.x, y: self.height - h - self.lift, width: w, height: h }
     }
 
     /// Advance position and animation by `dt` seconds.
