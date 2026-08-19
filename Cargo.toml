@@ -1,0 +1,38 @@
+[package]
+name = "claude-crab"
+version = "2.0.0"
+edition = "2024"
+rust-version = "1.85"
+description = "A crab that walks above your panel while Claude Code works"
+repository = "https://github.com/quinnjr/claude-crab"
+license = "MIT"
+
+[dependencies]
+serde_json = "1.0"
+clap = { version = "4", features = ["derive"] }
+log = "0.4"
+env_logger = "0.11"
+
+# Pure-Rust Skia. Only `codec` is pulled in beyond std: the app decodes a PNG
+# spritesheet and blits sub-rects of it, and nothing here wants SVG or PDF.
+skia-rs = { version = "0.3", default-features = false, features = ["std", "codec", "text"] }
+
+# The floating backend. wgpu rather than softbuffer: softbuffer's pixel format
+# requires the top 8 bits to be zero, so it cannot present a window with
+# per-pixel alpha, and the crab is mostly transparent.
+winit = "0.30"
+wgpu = "29"
+pollster = "1"
+
+# Layer-shell is a wlroots protocol, so these are only pulled in where it can
+# exist. Everywhere else the floating backend is the only option.
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+smithay-client-toolkit = "0.21"
+wayland-client = "0.31"
+
+[profile.release]
+opt-level = 3
+lto = true
+
+[patch.crates-io]
+skia-rs-codec = { path = "vendor/skia-rs-codec" }

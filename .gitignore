@@ -5,3 +5,12 @@ __pycache__/
 /.flatpak-builder/
 /build-flathub/
 /fhrepo/
+/*.flatpak
+/.bundle-repo/
+/.bundle-build/
+
+# Feature worktrees; see the branching notes in the README.
+.worktrees/
+
+# Cargo
+/target/

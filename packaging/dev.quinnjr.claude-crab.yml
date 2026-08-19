@@ -9,14 +9,26 @@
 # The only subtle part is the state directory. Claude Code runs on the host and
 # is not sandboxed, so its hooks always write events to the host's
 # ~/.local/state/claude-crab/inbox. The --filesystem entry below binds that
-# directory through at the same path, and CrabConfig::inboxDir() skips the
+# directory through at the same path, and CrabConfig::inbox_dir() skips the
 # sandbox's own XDG_STATE_HOME so the two sides meet. Without both halves the
 # crab watches an empty directory and simply never wakes up.
+#
+# BEFORE BUILDING: cargo dependencies must be vendored, because Flathub forbids
+# network access during a build. Regenerate cargo-sources.json whenever
+# Cargo.lock changes:
+#
+#   flatpak-cargo-generator.py Cargo.lock -o packaging/cargo-sources.json
+#
+# (from https://github.com/flatpak/flatpak-builder-tools/tree/master/cargo)
 
 id: dev.quinnjr.claude-crab
-runtime: org.kde.Platform
-runtime-version: '6.9'
-sdk: org.kde.Sdk
+# The freedesktop runtime, not org.kde.Platform: rendering is pure Rust via
+# skia-rs, so nothing here needs Qt or the KDE libraries any more.
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
 command: claude-crab
 
 finish-args:
@@ -43,9 +55,7 @@ finish-args:
 
 cleanup:
   - /include
-  - /lib/cmake
   - /lib/pkgconfig
-  - /mkspecs
 
 modules:
   # Build-time only: gen_sprites.py renders the sheets and icons. Vendored as a
@@ -62,34 +72,29 @@ modules:
     cleanup:
       - '*'
 
-  # Not shipped in org.kde.Platform, so it is built here.
-  #
-  # Pinned to 6.5.5 rather than the newest release: layer-shell-qt from Plasma
-  # 6.6 onward requires Qt 6.10, and org.kde.Sdk//6.9 carries Qt 6.9.3. The 6.5
-  # series targets Qt 6.9 and ECM 6.18, both satisfied by the runtime, so no
-  # extra-cmake-modules module is needed either. Revisit when a KDE runtime
-  # with Qt 6.10 ships.
-  - name: layer-shell-qt
-    buildsystem: cmake-ninja
-    config-opts:
-      - -DCMAKE_BUILD_TYPE=Release
-      - -DBUILD_TESTING=OFF
-    sources:
-      - type: archive
-        url: https://download.kde.org/stable/plasma/6.5.5/layer-shell-qt-6.5.5.tar.xz
-        sha256: 6844fee55b8b7cbc320cd8308b51595ef830d5a99b4d355b0fd59f88feab2c11
-
   - name: claude-crab
-    buildsystem: cmake-ninja
-    config-opts:
-      - -DCMAKE_BUILD_TYPE=Release
-      - -DBUILD_TESTING=OFF
+    buildsystem: simple
     build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
       env:
-        # So gen_sprites.py can find the vendored Pillow.
+        CARGO_HOME: /run/build/claude-crab/cargo
+        # So gen_sprites.py, run by build.rs, can find the vendored Pillow.
         PYTHONPATH: /app/lib/python3.12/site-packages
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - install -Dm755 target/release/claude-crab /app/bin/claude-crab
+      - install -Dm755 tools/crab_hooks.py /app/bin/claude-crab-hooks
+      - install -Dm644 packaging/dev.quinnjr.claude-crab.desktop
+        /app/share/applications/dev.quinnjr.claude-crab.desktop
+      - install -Dm644 packaging/dev.quinnjr.claude-crab.metainfo.xml
+        /app/share/metainfo/dev.quinnjr.claude-crab.metainfo.xml
+      - for s in 32 48 64 128 256; do install -Dm644
+        "$(find target/release/build -type d -name icons -print -quit)/$s.png"
+        "/app/share/icons/hicolor/${s}x${s}/apps/dev.quinnjr.claude-crab.png"; done
     sources:
       # For a Flathub submission this becomes a git source with a tag and
       # commit; a dir source keeps local iteration fast.
       - type: dir
         path: ..
+      - cargo-sources.json

@@ -5,6 +5,34 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [2.0.0] — 2026-08-19
+
+### Changed
+
+- **Complete rewrite in Rust.** Qt and QML are gone; rendering is pure Rust
+  (skia-rs) and the build is `cargo`, not CMake. Two window backends: a
+  wlr-layer-shell surface on Wayland compositors that support it, and a
+  floating always-on-top window (winit/wgpu) that brings the crab to macOS
+  and Windows.
+- The layer-shell surface covers the whole output rather than a bottom
+  strip, with input still confined to the character, so a drag can drop the
+  crab at any coordinate on the screen. It roams horizontally at the height
+  it is dropped until dragged again.
+- The right-click menu's lock toggle is now **Pin**/**Unpin** and only
+  guards against dragging: a pinned crab roams as usual but ignores the
+  left button.
+- **Breaking config change.** `lockedX` is gone; `lockPosition` still
+  persists the pin toggle, but a pinned position is no longer saved.
+
+### Added
+
+- A single-file `.flatpak` bundle attached to each release, built by
+  `tools/build-bundle.sh` and by a workflow on tag push. It records Flathub as
+  its runtime repository so a machine without `org.kde.Platform` is offered it
+  rather than failing on an unresolved dependency.
+
 ## [1.1.1] — 2026-07-29
 
 ### Added
@@ -95,6 +123,7 @@ First release.
   write to the host's. `CrabConfig::inboxDir()` accounts for this;
   `$CLAUDE_CRAB_STATE_DIR` overrides it.
 
+[2.0.0]: https://github.com/quinnjr/claude-crab/releases/tag/v2.0.0
 [1.1.1]: https://github.com/quinnjr/claude-crab/releases/tag/v1.1.1
 [1.1.0]: https://github.com/quinnjr/claude-crab/releases/tag/v1.1.0
 [1.0.0]: https://github.com/quinnjr/claude-crab/releases/tag/v1.0.0

@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: MIT
+#
+# Builds a single-file .flatpak bundle on every release tag and attaches it to
+# the GitHub release. Flathub does not accept AI-assisted applications, so this
+# bundle is how the Flatpak build reaches anyone -- see
+# packaging/flathub/README.md.
+
+name: Release bundle
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Buildable on demand, so the workflow can be exercised without cutting a tag.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.9
+      options: --privileged
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The working-tree manifest, not the pinned Flathub one. At the moment a
+      # tag is cut the pinned manifest still points at the previous release --
+      # its tag and commit can only be filled in once the tag exists -- so
+      # building it here would ship the last version under this version's name.
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: claude-crab.flatpak
+          manifest-path: packaging/dev.quinnjr.claude-crab.yml
+          cache-key: flatpak-builder-${{ github.sha }}
+
+      - name: Name the bundle after the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: mv claude-crab.flatpak "claude-crab-${GITHUB_REF_NAME#v}.flatpak"
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" claude-crab-*.flatpak --clobber
+
+      - name: Keep the artifact when there is no release to attach it to
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-crab-flatpak
+          path: claude-crab.flatpak

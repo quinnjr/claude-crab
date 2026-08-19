@@ -23,9 +23,12 @@ from typing import Any, Iterable
 
 MARKER = "# claude-crab:v1"
 
-# Mirrors inboxDir() in src/main.cpp. Both sides must agree, and both
-# honour XDG_STATE_HOME so a non-default state root still works.
+# Mirrors CrabConfig::inbox_dir() in src/config.rs. Both sides must agree.
+#
+# POSIX honours XDG_STATE_HOME so a non-default state root still works; Windows
+# has no such convention and uses LOCALAPPDATA, matching the Rust side.
 STATE_DIR = "${XDG_STATE_HOME:-$HOME/.local/state}/claude-crab/inbox"
+STATE_DIR_WINDOWS = r"%LOCALAPPDATA%\claude-crab\inbox"
 
 # Payloads embed tool_input, which for a large Write or Edit can run to
 # megabytes. The crab needs only session_id, hook_event_name and tool_name, and
@@ -52,7 +55,7 @@ HOOK_GC_SAMPLE = "*0"
 #
 # The marker has to stay last: anything appended after it is inside the comment
 # and silently never runs.
-COMMAND = (
+COMMAND_POSIX = (
     f'd="{STATE_DIR}"; mkdir -p "$d"; f="$d/$(date +%s%N)"; '
     f'cat > "$f.tmp" && truncate -s "<{HOOK_MAX_BYTES}" "$f.tmp" && '
     f'mv "$f.tmp" "$f.json"; '
@@ -60,6 +63,28 @@ COMMAND = (
     f'find "$d" -maxdepth 1 -type f -mmin +{HOOK_GC_AGE_MINUTES} -delete 2>/dev/null;; '
     f'esac {MARKER}'
 )
+
+# Windows has no sh, no truncate and no find, and cmd.exe cannot do any of this
+# legibly. Rather than reimplement the pipeline in batch, hand the whole job to
+# the Python that is already running this installer -- Claude Code runs hooks
+# through cmd.exe, so this is one process either way.
+#
+# Kept to a single line: a hook command cannot span lines, and the marker has to
+# stay last so nothing is appended inside a comment.
+_WINDOWS_PY = (
+    "import os,pathlib,sys,time;"
+    f"d=pathlib.Path(os.path.expandvars(r'{STATE_DIR_WINDOWS}'));"
+    "d.mkdir(parents=True,exist_ok=True);"
+    "f=d/str(time.time_ns());"
+    f"f.with_suffix('.tmp').write_bytes(sys.stdin.buffer.read({HOOK_MAX_BYTES}));"
+    "f.with_suffix('.tmp').rename(f.with_suffix('.json'));"
+    f"[p.unlink(missing_ok=True) for p in d.iterdir() "
+    f"if p.stat().st_mtime < time.time()-{HOOK_GC_AGE_MINUTES}*60] "
+    "if str(f).endswith('0') else None"
+)
+COMMAND_WINDOWS = f'python -c "{_WINDOWS_PY}" {MARKER}'
+
+COMMAND = COMMAND_WINDOWS if os.name == "nt" else COMMAND_POSIX
 
 # Events the crab needs. PreToolUse/PostToolUse take a tool matcher; the rest
 # are registered without one.
