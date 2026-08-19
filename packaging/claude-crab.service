@@ -6,7 +6,9 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=@CLAUDE_CRAB_BINARY@
+# Absolute path so systemd does not depend on the unit's PATH. A --user install
+# to somewhere under $HOME wants this pointed at that prefix instead.
+ExecStart=/usr/bin/claude-crab
 Restart=on-failure
 RestartSec=5
 Slice=session.slice

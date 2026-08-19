@@ -8,3 +8,9 @@ __pycache__/
 /*.flatpak
 /.bundle-repo/
 /.bundle-build/
+
+# Feature worktrees; see the branching notes in the README.
+.worktrees/
+
+# Cargo
+/target/

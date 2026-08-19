@@ -479,3 +479,35 @@ def test_command_is_shell_safe_and_marked():
     # The marker must be a comment, not an argument, or every hook invocation
     # would try to run it.
     assert f" {crab_hooks.MARKER}" in crab_hooks.COMMAND
+
+
+class TestWindowsCommand:
+    """The Windows hook is an embedded Python one-liner, which is easy to break
+    silently: a syntax error would only show up as a crab that never moves."""
+
+    def test_is_syntactically_valid_python(self):
+        import ast
+
+        source = crab_hooks._WINDOWS_PY
+        ast.parse(source)
+
+    def test_is_a_single_line(self):
+        # A hook command cannot span lines.
+        assert "\n" not in crab_hooks.COMMAND_WINDOWS
+
+    def test_marker_stays_last(self):
+        # Anything after the marker is inside the comment and never runs.
+        assert crab_hooks.COMMAND_WINDOWS.rstrip().endswith(crab_hooks.MARKER)
+
+    def test_agrees_with_the_rust_inbox_path(self):
+        # src/config.rs joins LOCALAPPDATA with claude-crab\inbox.
+        assert crab_hooks.STATE_DIR_WINDOWS == r"%LOCALAPPDATA%\claude-crab\inbox"
+        assert "STATE_DIR_WINDOWS" not in crab_hooks._WINDOWS_PY
+        assert r"%LOCALAPPDATA%\claude-crab\inbox" in crab_hooks._WINDOWS_PY
+
+    def test_honours_the_byte_cap(self):
+        assert str(crab_hooks.HOOK_MAX_BYTES) in crab_hooks._WINDOWS_PY
+
+    def test_posix_command_is_still_the_default_here(self):
+        # This suite runs on POSIX; the selected command must be the sh one.
+        assert crab_hooks.COMMAND == crab_hooks.COMMAND_POSIX
