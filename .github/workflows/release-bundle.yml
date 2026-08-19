@@ -45,6 +45,10 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
+          # gh resolves the repository from git, which refuses the
+          # runner-owned checkout inside the container ("dubious ownership").
+          # Naming the repository explicitly keeps gh out of git entirely.
+          GH_REPO: ${{ github.repository }}
         run: gh release upload "$GITHUB_REF_NAME" claude-crab-*.flatpak --clobber
 
       - name: Keep the artifact when there is no release to attach it to
